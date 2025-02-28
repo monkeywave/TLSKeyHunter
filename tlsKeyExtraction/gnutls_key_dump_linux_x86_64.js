@@ -420,6 +420,27 @@ function get_key_from_ptr(key_ptr){
 }
 
 
+function dumpMemory2(ptrValue, size) { 
+    try {   
+        // Read the first few bytes to check for "SHA" 
+        var prefix = Memory.readUtf8String(ptrValue, 3); // Read the first 3 bytes as a string 
+        if (prefix === "SHA") 
+            { 
+                console.log("[*] Skipping dump. Address content starts with 'SHA'."); 
+                return null; 
+            } 
+            // Perform the memory dump if prefix is not "SHA" 
+            var data = Memory.readByteArray(ptrValue, size); 
+            console.log(hexdump(data, { offset: 0, length: size, header: true, ansi: true })); 
+            return data; 
+        } catch (error) {  
+            console.log("Error dumping memory at: " + ptrValue + " - " + error.message); 
+            console.log("\n"); 
+            return null; 
+        } 
+    }
+
+
 function get_label(label_to_span){
     var labelStr = "";
     try{
@@ -632,7 +653,8 @@ function dump_keys(label, identifier,key) {
 function dump_keys_from_derive_secrets(client_random, key, label_to_span) {
     
     // Set the expected length of the key (in bytes). Adjust as needed.
-    const KEY_LENGTH = 32; // Assuming 32 bytes for this example, change this as required.
+    const INIT_KEY_LENGTH = 32; // Assuming 32 bytes for this example, change this as required.
+    const MAX_KEY_LENGTH = 64;
     var labelStr = "";
     //var client_random = "";
     var secret_key = "";
@@ -667,6 +689,20 @@ function dump_keys_from_derive_secrets(client_random, key, label_to_span) {
     //console.log("Key:");
     */
     if (!key.isNull()) {
+        // Dynamically determine the key length
+        let KEY_LENGTH = 0;
+
+        // Iterate through the memory to determine key length
+        while (KEY_LENGTH < MAX_KEY_LENGTH) {
+            const byte = Memory.readU8(key.add(KEY_LENGTH)); // Read one byte at a time
+            if (byte === 0) { // Stop if null terminator is found (optional, adjust as needed)
+                break;
+            }
+            KEY_LENGTH++;
+        }
+        if(KEY_LENGTH <33){
+            KEY_LENGTH = INIT_KEY_LENGTH;
+        }
         const keyData = Memory.readByteArray(key, KEY_LENGTH); // Read the key data (KEY_LENGTH bytes)
         
         // Convert the byte array to a string of space-separated hex values
@@ -691,10 +727,10 @@ function dump_keys_from_derive_secrets(client_random, key, label_to_span) {
 }
 
 
-function dump_keys_from_prf(client_random_ptr, key) {
+function dump_keys_from_prf(client_random_ptr, key, key_length) {
     
     // Set the expected length of the key (in bytes). Adjust as needed.
-    const KEY_LENGTH = 32; // Assuming 32 bytes for this example, change this as required.
+    const KEY_LENGTH = key_length; // Assuming 32 bytes for this example, change this as required.
     var labelStr = "CLIENT_RANDOM";
     var client_random = "";
     var secret_key = "";
@@ -717,7 +753,7 @@ function dump_keys_from_prf(client_random_ptr, key) {
     }
 
     if(!client_random_ptr.isNull()){
-        const keyData = Memory.readByteArray(client_random_ptr.add(0x20), KEY_LENGTH); // Read the key data (KEY_LENGTH bytes)
+        const keyData = Memory.readByteArray(client_random_ptr.add(0x20), 32); // Read the key data (KEY_LENGTH bytes)
         
         // Convert the byte array to a string of space-separated hex values
         const hexClient_random = Array
@@ -761,10 +797,13 @@ function hookGnuTLSByPattern(module) {
 
     // Try first pattern and if it fails, try the second one
     hook_HKDF_By_Pattern(moduleBase, moduleSize, pattern_mb_derive_secret, "derive_secret");
-    var pattern_prf = "F3 0F 1E FA 41 57 41 56 41 55 41 54 55 53 89 FB 48 81 EC 28 03 00 00 64 48 8B 04 25 28 00 00 00 48 89 84";
+    //var pattern_prf = "F3 0F 1E FA 41 57 41 56 41 55 41 54 55 53 89 FB 48 81 EC 28 03 00 00 64 48 8B 04 25 28 00 00 00 48 89 84";
+    //var pattern_prf = "F3 0F 1E FA 41 57 41 56 41 55 41 54 55 53 89 FB 48 81 EC 28 03 00 00 64 48 8B 04 25 28 00 00 00 48 89 84 24 18 03 00 00 31 C0 8D 47 FA 4C 8B B4 24 60 03 00 00 4C 8B BC 24 70 03 00 00 83 F8 0B";
+    var pattern_prf = "F3 0F 1E FA 55 48 89 E5 41 57 41 56 41 55 49 89 CD 41 54 53 89 FB 48 81 EC 48 05 00 00 4C 8B 7D 10 4C 8B 65 20 64 48 8B 0C 25 28 00 00 00 48 89 4D C8 31 C9 8D 4F FA 83 F9 0B 77 14" 
+    //"F3 0F 1E FA 41 57 41 56 41 55 41 54 55 53 89 FB 48 81 EC 28 03 00 00 64 48 8B 04 25 28 00 00 00 48 89 84 24 18 03 00 00 31 C0 8D 47 FA 4C 8B B4 24 60 03 00 00 4C 8B BC 24 70 03 00 00 83 F8 0B 77 26"
     //24 18 03 00 00 31 C0 8D 47 FA 4C 8B B4 24 60 03 00 00 4C 8B BC 24 70 03 00 00 83 F8 0B 77 26";
 
-    //hook_PRF_By_Pattern(moduleBase, moduleSize, pattern_prf, "pattern_prf_secret");
+    hook_PRF_By_Pattern(moduleBase, moduleSize, pattern_prf, "pattern_prf_secret");
 }
 
 
@@ -777,73 +816,63 @@ function hook_HKDF_By_Pattern(moduleBase, moduleSize, pattern, pattern_name){
                         // Hook the function using Interceptor
                         Interceptor.attach(address, {
                             onEnter: function(args) {
-                                console.log("Start hooking HKDF func");
-                                //this.hs = args[0]; // --> ptr to handshake struct
-                                //this.key = args[1]; // when init its zero and only when returning it is filled with the key value
-                                //this.label = args[2]; // ptr to the label string
+                                //console.log("Start hooking HKDF func");
+                                /*
+                                Arg0 -->  Session (Erstes Argument Pointer zu Session objekt)
+                                Arg1 --> LAbel
+                                Arg2 --> siezof(Label)
+                                ARg3 --> hash data
+                                ARG4 --> hash length
+                                Arg5 --> key input (not the final key)
+                                ARG6 --> key output
+                                Arg8 --> strct at 0ffset 0x50 (on x86-64) client_random when arg3 and arg4 zero
+                                */
+                                this.session_str = args[0]; // --> ptr to session struct
+                                this.key = args[6]; // when init its zero and only when returning it is filled with the key value
+                                this.label = args[1]; // ptr to the label string
 
 
-                               
-                                // Initialize an empty array to store arguments
-                                /*if(did_check == false){
-                                    this.myargs = [];
-                                    this.myargs = get_working_func_args(args,true, true);
-                                }*/
-                                
 
+                                if (!this.label.isNull()) {
+                                var label = this.label.readCString(); // Read the C string --> hier scheint es unter x86-64 eine access violation zu geben
+                                var labelStr = getTLSLabel(label);
+                                if (labelStr === "CLIENT_HANDSHAKE_TRAFFIC_SECRET") {
+                                    // Read client_random from args[3] with an offset of 6
+                                    var clientRandomPtr = args[3].add(6);
+                                    try {
+                                        var clientRandomData = clientRandomPtr.readByteArray(32); // Read 32 bytes
+                                        console.log("[*] Client Random (offset 6):");
+                                        // Convert the byte array to a string of space-separated hex values
+                                        this.client_random = Array
+                                            .from(new Uint8Array(clientRandomData)) // Convert byte array to Uint8Array and then to Array
+                                            .map(byte => byte.toString(16).padStart(2, '0').toUpperCase()) // Convert each byte to a 2-digit hex string
+                                            .join(''); // Join all the hex values with a space
 
-                                 console.log("finish..................................");
-                                //this.client_random = "";
+                                    } catch (e) {
+                                        console.log("[!] Error reading client_random: " + e.message);
+                                    }
+                                    }
+                                }
 
 
 
                             },
                             onLeave: function(retval) {
 
-
-
-                                if (!retval.isNull()) {
-
-                                    /*
-                                    if(did_check == false){
-                                        console.log("automation test start---------------------------");
-                                        console.log("We identified "+this.myargs.length+" number of arguments");
-                                        console.log(" now beginning wit the check...");
-                                        // Analyze the saved arguments from `onEnter`
-                                        try {
-                                            for (var i = 0; i < this.myargs.length; i++) {
-                                                var arg = this.myargs[i];
-                                                if (arg) {
-                                                    console.log('Argument ' + i + ' onLeave:');
-                                                    //dumpMemory(arg, 0x80); // Optional: Dump memory at argument address
-                                                    console.log("Start checking arguments....");
-                                                    check_arguments(arg, i);
-                                                } else {
-                                                    console.log('Argument ' + i + ' is null or invalid onLeave.');
-                                                }
-                                            }
-                                        } catch (e) {
-                                            console.log('[!] Error in onLeave: ' + e.message);
-                                            did_check = true;
-                                        }
-
-                                        did_check = true;
-
-                                    }*/
-
-
-                                    console.log("returning...");
                                     // working version for TLS 1.3
-                                    //var sslStructPointer = this.hs.readPointer();
+                                    if(this.client_random){
+                                        session_client_random = this.client_random;
+                                    }else{
+                                        if(session_client_random.length < 2){
+                                            session_client_random = "";
+                                        }
+                                    }
 
-                                    //session_client_random = get_client_random_from_ssl_struct(sslStructPointer);
 
-                                    //parseSSLHandshake(this.hs); --> not working but the rest is working :)
+                                    dump_keys_from_derive_secrets(session_client_random,this.key,this.label);
+
                                     
-
-                                    //dump_keys_from_derive_secrets(session_client_random,this.key,this.label);
-                                    
-                                }
+                                // }
                             }
                         });
                     }
@@ -861,30 +890,36 @@ function hook_PRF_By_Pattern(moduleBase, moduleSize, pattern, pattern_name){
                         Interceptor.attach(address, {
                             onEnter: function(args) {
                                 this.dump_keys = false;
+
+                                //this.label = args[4];
+                                //this.key = args[2];
+                                //this.client_random_ptr = args[6];
                                 
 
-                                /*if(is_arg_key_exp(args[6])){
-                                    this.client_random_ptr = args[8];
-                                    this.key = args[3];
+                                if(is_arg_key_exp(args[4])){
+                                    this.client_random_ptr = args[6];
+                                    this.key = args[2];
+                                    this.key_length = args[1].toInt32();
                                     this.dump_keys = true;
-                                }*/
+                                }
 
                                 /*
                                 if(did_check == false){
                                     this.myargs = [];
                                     this.myargs = get_working_func_args(args,true, true);
+                                    this.dump_keys = true;
                                 }
-                                */ 
+                                 */ 
 
 
                             },
                             onLeave: function(retval) {
                                 console.log("");
 
-                                if (!retval.isNull() && this.dump_keys) {
-                                    //dump_keys_from_prf(this.client_random_ptr, this.key);
+                                if (this.dump_keys) {
+                                    dump_keys_from_prf(this.client_random_ptr, this.key, this.key_length);
 
-                                    /*if(did_check == false){
+                                    /* if(did_check == false){
                                         console.log("------------- Key Identificaiton -------------");
                                         console.log("[*] We identified "+this.myargs.length+" number of arguments");
                                         // Analyze the saved arguments from `onEnter`
@@ -900,12 +935,12 @@ function hook_PRF_By_Pattern(moduleBase, moduleSize, pattern, pattern_name){
                                             }
                                         } catch (e) {
                                             console.log('[!] Error in onLeave: ' + e.message);
-                                            did_check = true;
+                                            did_check = false;
                                         }
 
-                                        did_check = true;
+                                        did_check = false;
 
-                                    }*/
+                                    }/* */
                                
                                 
                                 }
@@ -920,7 +955,7 @@ function findGnuTLSModule() {
     var modules = Process.enumerateModules();
     for (var i = 0; i < modules.length; i++) {
         var name = modules[i].name;
-        if (name.startsWith("test_client_") ) {
+        if (name.startsWith("libgnutls.") ) {
             console.log("Found GnuTLS Module: " + name);
             return modules[i];
         }
@@ -942,8 +977,34 @@ function main() {
 // Run the main function
 main();
 
+/*Interceptor.attach(Module.findExportByName(null, "_tls13_derive_secret"), {
+    onEnter: function (args) {
+        // Print the raw value of RDI (args[0]) which is the gnutls_session_t
+        console.log("[*] RDI (gnutls_session_t): " + args[0]);
+
+        // Optionally, dump the memory at RDI if you want to inspect it
+        try {
+            console.log("[*] Dumping memory at RDI (session):");
+            console.log(hexdump(args[0], { offset: 0, length: 64, header: true, ansi: true }));
+        } catch (e) {
+            console.log("[!] Error reading memory at RDI: " + e.message);
+        }
+    }
+})
+*/
+
 
 /*
+e435089d7736c72e9b6486ec940466a1f1249716548350938331644037b0393b81fe30f6f8ab4b05846a30fc59cac713
+E435089D7736C72E9B6486EC940466A1F1249716548350938331644037B0393B81FE30F6F8AB4B05846A30FC59CAC713
+
+5192f036afd620fbe62e668a71d20bfbd311b54210e878451949f8bd3b1b3c8b2831a1f64357e6af110bc2dce7e89bc8
+48 --> 96
+5192F036AFD620FBE62E668A71D20BFBD311B54210E878451949F8BD3B1B3C8B
+32 --> 64
+
+
+
 
 In GnuTLS
 https://github.com/gnutls/gnutls/blob/97f1baf6a7ad4aa1ff3db6e8543d910219ef9a16/lib/constate.c#L412

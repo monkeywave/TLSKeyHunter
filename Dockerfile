@@ -23,9 +23,7 @@ RUN /opt/ghidra_11.1.2_PUBLIC/support/buildNatives
 
 # Copy the Ghidra analysis script into the container
 WORKDIR /usr/local/src
-COPY boring_secret_hunter_jython.py /usr/local/src/boring_secret_hunter_jython.py
-COPY boring_secret_hunter.py /usr/local/src/boring_secret_hunter.py
-COPY BoringSecretHunter.java /usr/local/src/BoringSecretHunter.java
+COPY TLSKeyHunter.java.java /usr/local/src/TLSKeyHunter.java.java
 COPY MinimalAnalysisOption.java /usr/local/src/MinimalAnalysisOption.java
 COPY custom_log4j.xml /usr/local/src/custom_log4j.xml
 COPY ghidra_analysis.sh /usr/local/src/ghidra_analysis.sh
