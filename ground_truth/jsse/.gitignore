@@ -1,0 +1,43 @@
+# Maven's target directory (where compiled classes and JAR files are stored)
+target/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~ 
+
+# OS generated files (MacOS/Linux/Windows)
+.DS_Store
+Thumbs.db
+*.suo
+*.user
+*.db
+*.class
+
+# IDE specific files (IntelliJ IDEA)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Eclipse-specific files
+.project
+.classpath
+.settings/
+
+# VSCode specific files
+.vscode/
+
+# NetBeans specific files
+nbproject/private/
+
+# Maven's local repository dependency cache (optional)
+.mvn/
+
+# Other possible build directories
+build/
+out/

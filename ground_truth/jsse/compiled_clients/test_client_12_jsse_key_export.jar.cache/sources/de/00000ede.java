@@ -1,0 +1,258 @@
+package org.bouncycastle.util;
+
+/* loaded from: test_client_12_jsse_key_export.jar:org/bouncycastle/util/Pack.class */
+public abstract class Pack {
+    public static short bigEndianToShort(byte[] bArr, int i) {
+        return (short) (((bArr[i] & 255) << 8) | (bArr[i + 1] & 255));
+    }
+
+    public static int bigEndianToInt(byte[] bArr, int i) {
+        int i2 = i + 1;
+        int i3 = i2 + 1;
+        return (bArr[i] << 24) | ((bArr[i2] & 255) << 16) | ((bArr[i3] & 255) << 8) | (bArr[i3 + 1] & 255);
+    }
+
+    public static void bigEndianToInt(byte[] bArr, int i, int[] iArr) {
+        for (int i2 = 0; i2 < iArr.length; i2++) {
+            iArr[i2] = bigEndianToInt(bArr, i);
+            i += 4;
+        }
+    }
+
+    public static void bigEndianToInt(byte[] bArr, int i, int[] iArr, int i2, int i3) {
+        for (int i4 = 0; i4 < i3; i4++) {
+            iArr[i2 + i4] = bigEndianToInt(bArr, i);
+            i += 4;
+        }
+    }
+
+    public static byte[] intToBigEndian(int i) {
+        byte[] bArr = new byte[4];
+        intToBigEndian(i, bArr, 0);
+        return bArr;
+    }
+
+    public static void intToBigEndian(int i, byte[] bArr, int i2) {
+        bArr[i2] = (byte) (i >>> 24);
+        int i3 = i2 + 1;
+        bArr[i3] = (byte) (i >>> 16);
+        int i4 = i3 + 1;
+        bArr[i4] = (byte) (i >>> 8);
+        bArr[i4 + 1] = (byte) i;
+    }
+
+    public static byte[] intToBigEndian(int[] iArr) {
+        byte[] bArr = new byte[4 * iArr.length];
+        intToBigEndian(iArr, bArr, 0);
+        return bArr;
+    }
+
+    public static void intToBigEndian(int[] iArr, byte[] bArr, int i) {
+        for (int i2 : iArr) {
+            intToBigEndian(i2, bArr, i);
+            i += 4;
+        }
+    }
+
+    public static void intToBigEndian(int[] iArr, int i, int i2, byte[] bArr, int i3) {
+        for (int i4 = 0; i4 < i2; i4++) {
+            intToBigEndian(iArr[i + i4], bArr, i3);
+            i3 += 4;
+        }
+    }
+
+    public static long bigEndianToLong(byte[] bArr, int i) {
+        return ((bigEndianToInt(bArr, i) & 4294967295L) << 32) | (bigEndianToInt(bArr, i + 4) & 4294967295L);
+    }
+
+    public static void bigEndianToLong(byte[] bArr, int i, long[] jArr) {
+        for (int i2 = 0; i2 < jArr.length; i2++) {
+            jArr[i2] = bigEndianToLong(bArr, i);
+            i += 8;
+        }
+    }
+
+    public static void bigEndianToLong(byte[] bArr, int i, long[] jArr, int i2, int i3) {
+        for (int i4 = 0; i4 < i3; i4++) {
+            jArr[i2 + i4] = bigEndianToLong(bArr, i);
+            i += 8;
+        }
+    }
+
+    public static byte[] longToBigEndian(long j) {
+        byte[] bArr = new byte[8];
+        longToBigEndian(j, bArr, 0);
+        return bArr;
+    }
+
+    public static void longToBigEndian(long j, byte[] bArr, int i) {
+        intToBigEndian((int) (j >>> 32), bArr, i);
+        intToBigEndian((int) (j & 4294967295L), bArr, i + 4);
+    }
+
+    public static byte[] longToBigEndian(long[] jArr) {
+        byte[] bArr = new byte[8 * jArr.length];
+        longToBigEndian(jArr, bArr, 0);
+        return bArr;
+    }
+
+    public static void longToBigEndian(long[] jArr, byte[] bArr, int i) {
+        for (long j : jArr) {
+            longToBigEndian(j, bArr, i);
+            i += 8;
+        }
+    }
+
+    public static void longToBigEndian(long[] jArr, int i, int i2, byte[] bArr, int i3) {
+        for (int i4 = 0; i4 < i2; i4++) {
+            longToBigEndian(jArr[i + i4], bArr, i3);
+            i3 += 8;
+        }
+    }
+
+    public static void longToBigEndian(long j, byte[] bArr, int i, int i2) {
+        for (int i3 = i2 - 1; i3 >= 0; i3--) {
+            bArr[i3 + i] = (byte) (j & 255);
+            j >>>= 8;
+        }
+    }
+
+    public static short littleEndianToShort(byte[] bArr, int i) {
+        return (short) ((bArr[i] & 255) | ((bArr[i + 1] & 255) << 8));
+    }
+
+    public static int littleEndianToInt(byte[] bArr, int i) {
+        int i2 = i + 1;
+        int i3 = i2 + 1;
+        return (bArr[i] & 255) | ((bArr[i2] & 255) << 8) | ((bArr[i3] & 255) << 16) | (bArr[i3 + 1] << 24);
+    }
+
+    public static void littleEndianToInt(byte[] bArr, int i, int[] iArr) {
+        for (int i2 = 0; i2 < iArr.length; i2++) {
+            iArr[i2] = littleEndianToInt(bArr, i);
+            i += 4;
+        }
+    }
+
+    public static void littleEndianToInt(byte[] bArr, int i, int[] iArr, int i2, int i3) {
+        for (int i4 = 0; i4 < i3; i4++) {
+            iArr[i2 + i4] = littleEndianToInt(bArr, i);
+            i += 4;
+        }
+    }
+
+    public static int[] littleEndianToInt(byte[] bArr, int i, int i2) {
+        int[] iArr = new int[i2];
+        for (int i3 = 0; i3 < iArr.length; i3++) {
+            iArr[i3] = littleEndianToInt(bArr, i);
+            i += 4;
+        }
+        return iArr;
+    }
+
+    public static byte[] shortToLittleEndian(short s) {
+        byte[] bArr = new byte[2];
+        shortToLittleEndian(s, bArr, 0);
+        return bArr;
+    }
+
+    public static void shortToLittleEndian(short s, byte[] bArr, int i) {
+        bArr[i] = (byte) s;
+        bArr[i + 1] = (byte) (s >>> 8);
+    }
+
+    public static byte[] shortToBigEndian(short s) {
+        byte[] bArr = new byte[2];
+        shortToBigEndian(s, bArr, 0);
+        return bArr;
+    }
+
+    public static void shortToBigEndian(short s, byte[] bArr, int i) {
+        bArr[i] = (byte) (s >>> 8);
+        bArr[i + 1] = (byte) s;
+    }
+
+    public static byte[] intToLittleEndian(int i) {
+        byte[] bArr = new byte[4];
+        intToLittleEndian(i, bArr, 0);
+        return bArr;
+    }
+
+    public static void intToLittleEndian(int i, byte[] bArr, int i2) {
+        bArr[i2] = (byte) i;
+        int i3 = i2 + 1;
+        bArr[i3] = (byte) (i >>> 8);
+        int i4 = i3 + 1;
+        bArr[i4] = (byte) (i >>> 16);
+        bArr[i4 + 1] = (byte) (i >>> 24);
+    }
+
+    public static byte[] intToLittleEndian(int[] iArr) {
+        byte[] bArr = new byte[4 * iArr.length];
+        intToLittleEndian(iArr, bArr, 0);
+        return bArr;
+    }
+
+    public static void intToLittleEndian(int[] iArr, byte[] bArr, int i) {
+        for (int i2 : iArr) {
+            intToLittleEndian(i2, bArr, i);
+            i += 4;
+        }
+    }
+
+    public static void intToLittleEndian(int[] iArr, int i, int i2, byte[] bArr, int i3) {
+        for (int i4 = 0; i4 < i2; i4++) {
+            intToLittleEndian(iArr[i + i4], bArr, i3);
+            i3 += 4;
+        }
+    }
+
+    public static long littleEndianToLong(byte[] bArr, int i) {
+        return ((littleEndianToInt(bArr, i + 4) & 4294967295L) << 32) | (littleEndianToInt(bArr, i) & 4294967295L);
+    }
+
+    public static void littleEndianToLong(byte[] bArr, int i, long[] jArr) {
+        for (int i2 = 0; i2 < jArr.length; i2++) {
+            jArr[i2] = littleEndianToLong(bArr, i);
+            i += 8;
+        }
+    }
+
+    public static void littleEndianToLong(byte[] bArr, int i, long[] jArr, int i2, int i3) {
+        for (int i4 = 0; i4 < i3; i4++) {
+            jArr[i2 + i4] = littleEndianToLong(bArr, i);
+            i += 8;
+        }
+    }
+
+    public static byte[] longToLittleEndian(long j) {
+        byte[] bArr = new byte[8];
+        longToLittleEndian(j, bArr, 0);
+        return bArr;
+    }
+
+    public static void longToLittleEndian(long j, byte[] bArr, int i) {
+        intToLittleEndian((int) (j & 4294967295L), bArr, i);
+        intToLittleEndian((int) (j >>> 32), bArr, i + 4);
+    }
+
+    public static byte[] longToLittleEndian(long[] jArr) {
+        byte[] bArr = new byte[8 * jArr.length];
+        longToLittleEndian(jArr, bArr, 0);
+        return bArr;
+    }
+
+    public static void longToLittleEndian(long[] jArr, byte[] bArr, int i) {
+        for (long j : jArr) {
+            longToLittleEndian(j, bArr, i);
+            i += 8;
+        }
+    }
+
+    public static void longToLittleEndian(long[] jArr, int i, int i2, byte[] bArr, int i3) {
+        for (int i4 = 0; i4 < i2; i4++) {
+            longToLittleEndian(jArr[i + i4], bArr, i3);
+            i3 += 8;
+        }
+    }
+}

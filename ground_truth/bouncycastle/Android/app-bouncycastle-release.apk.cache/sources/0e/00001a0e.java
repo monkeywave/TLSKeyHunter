@@ -1,0 +1,92 @@
+package org.bouncycastle.asn1.cmp;
+
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.crmf.CRMFObjectIdentifiers;
+import org.bouncycastle.asn1.misc.MiscObjectIdentifiers;
+import org.bouncycastle.asn1.x509.X509ObjectIdentifiers;
+
+/* loaded from: classes.dex */
+public interface CMPObjectIdentifiers {
+    public static final ASN1ObjectIdentifier ct_encKeyWithID;
+    public static final ASN1ObjectIdentifier id_it;
+    public static final ASN1ObjectIdentifier id_it_caCerts;
+    public static final ASN1ObjectIdentifier id_it_certProfile;
+    public static final ASN1ObjectIdentifier id_it_certReqTemplate;
+    public static final ASN1ObjectIdentifier id_it_crlStatusList;
+    public static final ASN1ObjectIdentifier id_it_crls;
+    public static final ASN1ObjectIdentifier id_it_rootCaCert;
+    public static final ASN1ObjectIdentifier id_it_rootCaKeyUpdate;
+    public static final ASN1ObjectIdentifier id_pkip;
+    public static final ASN1ObjectIdentifier id_regCtrl;
+    public static final ASN1ObjectIdentifier id_regCtrl_algId;
+    public static final ASN1ObjectIdentifier id_regCtrl_rsaKeyLen;
+    public static final ASN1ObjectIdentifier id_regInfo;
+    public static final ASN1ObjectIdentifier it_caKeyUpdateInfo;
+    public static final ASN1ObjectIdentifier it_caProtEncCert;
+    public static final ASN1ObjectIdentifier it_confirmWaitTime;
+    public static final ASN1ObjectIdentifier it_currentCRL;
+    public static final ASN1ObjectIdentifier it_encKeyPairTypes;
+    public static final ASN1ObjectIdentifier it_implicitConfirm;
+    public static final ASN1ObjectIdentifier it_keyPairParamRep;
+    public static final ASN1ObjectIdentifier it_keyPairParamReq;
+    public static final ASN1ObjectIdentifier it_origPKIMessage;
+    public static final ASN1ObjectIdentifier it_preferredSymAlg;
+    public static final ASN1ObjectIdentifier it_revPassphrase;
+    public static final ASN1ObjectIdentifier it_signKeyPairTypes;
+    public static final ASN1ObjectIdentifier it_suppLangTags;
+    public static final ASN1ObjectIdentifier it_unsupportedOIDs;
+    public static final ASN1ObjectIdentifier regCtrl_altCertTemplate;
+    public static final ASN1ObjectIdentifier regCtrl_authenticator;
+    public static final ASN1ObjectIdentifier regCtrl_oldCertID;
+    public static final ASN1ObjectIdentifier regCtrl_pkiArchiveOptions;
+    public static final ASN1ObjectIdentifier regCtrl_pkiPublicationInfo;
+    public static final ASN1ObjectIdentifier regCtrl_protocolEncrKey;
+    public static final ASN1ObjectIdentifier regCtrl_regToken;
+    public static final ASN1ObjectIdentifier regInfo_certReq;
+    public static final ASN1ObjectIdentifier regInfo_utf8Pairs;
+    public static final ASN1ObjectIdentifier passwordBasedMac = CRMFObjectIdentifiers.passwordBasedMac;
+    public static final ASN1ObjectIdentifier kemBasedMac = MiscObjectIdentifiers.entrust.branch("66.16");
+    public static final ASN1ObjectIdentifier dhBasedMac = MiscObjectIdentifiers.entrust.branch("66.30");
+
+    static {
+        ASN1ObjectIdentifier branch = X509ObjectIdentifiers.id_pkix.branch("4");
+        id_it = branch;
+        it_caProtEncCert = branch.branch("1");
+        it_signKeyPairTypes = branch.branch("2");
+        it_encKeyPairTypes = branch.branch("3");
+        it_preferredSymAlg = branch.branch("4");
+        it_caKeyUpdateInfo = branch.branch("5");
+        it_currentCRL = branch.branch("6");
+        it_unsupportedOIDs = branch.branch("7");
+        it_keyPairParamReq = branch.branch("10");
+        it_keyPairParamRep = branch.branch("11");
+        it_revPassphrase = branch.branch("12");
+        it_implicitConfirm = branch.branch("13");
+        it_confirmWaitTime = branch.branch("14");
+        it_origPKIMessage = branch.branch("15");
+        it_suppLangTags = branch.branch("16");
+        id_it_caCerts = branch.branch("17");
+        id_it_rootCaKeyUpdate = branch.branch("18");
+        id_it_certReqTemplate = branch.branch("19");
+        id_it_rootCaCert = branch.branch("20");
+        id_it_certProfile = branch.branch("21");
+        id_it_crlStatusList = branch.branch("22");
+        id_it_crls = branch.branch("23");
+        id_pkip = CRMFObjectIdentifiers.id_pkip;
+        ASN1ObjectIdentifier aSN1ObjectIdentifier = CRMFObjectIdentifiers.id_regCtrl;
+        id_regCtrl = aSN1ObjectIdentifier;
+        id_regInfo = CRMFObjectIdentifiers.id_regInfo;
+        regCtrl_regToken = CRMFObjectIdentifiers.id_regCtrl_regToken;
+        regCtrl_authenticator = CRMFObjectIdentifiers.id_regCtrl_authenticator;
+        regCtrl_pkiPublicationInfo = CRMFObjectIdentifiers.id_regCtrl_pkiPublicationInfo;
+        regCtrl_pkiArchiveOptions = CRMFObjectIdentifiers.id_regCtrl_pkiArchiveOptions;
+        regCtrl_oldCertID = CRMFObjectIdentifiers.id_regCtrl_oldCertID;
+        regCtrl_protocolEncrKey = CRMFObjectIdentifiers.id_regCtrl_protocolEncrKey;
+        regCtrl_altCertTemplate = aSN1ObjectIdentifier.branch("7");
+        id_regCtrl_algId = aSN1ObjectIdentifier.branch("11");
+        id_regCtrl_rsaKeyLen = aSN1ObjectIdentifier.branch("12");
+        regInfo_utf8Pairs = CRMFObjectIdentifiers.id_regInfo_utf8Pairs;
+        regInfo_certReq = CRMFObjectIdentifiers.id_regInfo_certReq;
+        ct_encKeyWithID = CRMFObjectIdentifiers.id_ct_encKeyWithID;
+    }
+}

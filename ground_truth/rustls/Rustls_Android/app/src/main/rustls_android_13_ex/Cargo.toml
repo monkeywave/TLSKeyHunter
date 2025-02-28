@@ -1,0 +1,18 @@
+[package]
+name = "rustls_android_13_ex"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rustls_android_13_ex"
+crate-type = ["cdylib"]
+
+[dependencies]
+once_cell = "1.17"
+hex = "0.4"
+rustls = ">0.23.14"
+ring = "0.16"
+jni = "0.21"
+env_logger = "0.9"
+android_logger = "0.11"
+log = "0.4"

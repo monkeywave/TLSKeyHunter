@@ -1,0 +1,399 @@
+package org.bouncycastle.math.p010ec.tools;
+
+import java.math.BigInteger;
+import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.TreeSet;
+import org.bouncycastle.asn1.p003x9.ECNamedCurveTable;
+import org.bouncycastle.asn1.p003x9.X9ECParameters;
+import org.bouncycastle.crypto.p004ec.CustomNamedCurves;
+import org.bouncycastle.math.p010ec.ECAlgorithms;
+import org.bouncycastle.math.p010ec.ECConstants;
+import org.bouncycastle.math.p010ec.ECCurve;
+import org.bouncycastle.math.p010ec.ECFieldElement;
+import org.bouncycastle.math.p010ec.ECPoint;
+import org.bouncycastle.util.BigIntegers;
+
+/* renamed from: org.bouncycastle.math.ec.tools.DiscoverEndomorphisms */
+/* loaded from: test_client_12_jsse_key_export.jar:org/bouncycastle/math/ec/tools/DiscoverEndomorphisms.class */
+public class DiscoverEndomorphisms {
+    private static final int radix = 16;
+
+    public static void main(String[] strArr) {
+        if (strArr.length > 0) {
+            for (String str : strArr) {
+                discoverEndomorphisms(str);
+            }
+            return;
+        }
+        TreeSet<String> treeSet = new TreeSet(enumToList(ECNamedCurveTable.getNames()));
+        treeSet.addAll(enumToList(CustomNamedCurves.getNames()));
+        for (String str2 : treeSet) {
+            discoverEndomorphisms(str2);
+        }
+    }
+
+    public static void discoverEndomorphisms(X9ECParameters x9ECParameters) {
+        if (x9ECParameters == null) {
+            throw new NullPointerException("x9");
+        }
+        discoverEndomorphisms(x9ECParameters, "<UNKNOWN>");
+    }
+
+    private static void discoverEndomorphisms(String str) {
+        X9ECParameters byName = CustomNamedCurves.getByName(str);
+        if (byName == null) {
+            byName = ECNamedCurveTable.getByName(str);
+            if (byName == null) {
+                System.err.println("Unknown curve: " + str);
+                return;
+            }
+        }
+        discoverEndomorphisms(byName, str);
+    }
+
+    private static void discoverEndomorphisms(X9ECParameters x9ECParameters, String str) {
+        ECCurve curve = x9ECParameters.getCurve();
+        if (ECAlgorithms.isFpCurve(curve)) {
+            BigInteger characteristic = curve.getField().getCharacteristic();
+            if (curve.getB().isZero() && characteristic.mod(ECConstants.FOUR).equals(ECConstants.ONE)) {
+                System.out.println("Curve '" + str + "' has a 'GLV Type A' endomorphism with these parameters:");
+                printGLVTypeAParameters(x9ECParameters);
+            }
+            if (curve.getA().isZero() && characteristic.mod(ECConstants.THREE).equals(ECConstants.ONE)) {
+                System.out.println("Curve '" + str + "' has a 'GLV Type B' endomorphism with these parameters:");
+                printGLVTypeBParameters(x9ECParameters);
+            }
+        }
+    }
+
+    private static void printGLVTypeAParameters(X9ECParameters x9ECParameters) {
+        BigInteger[] solveQuadraticEquation = solveQuadraticEquation(x9ECParameters.getN(), ECConstants.ONE, ECConstants.ZERO, ECConstants.ONE);
+        ECFieldElement[] findNonTrivialOrder4FieldElements = findNonTrivialOrder4FieldElements(x9ECParameters.getCurve());
+        printGLVTypeAParameters(x9ECParameters, solveQuadraticEquation[0], findNonTrivialOrder4FieldElements);
+        System.out.println("OR");
+        printGLVTypeAParameters(x9ECParameters, solveQuadraticEquation[1], findNonTrivialOrder4FieldElements);
+    }
+
+    private static void printGLVTypeAParameters(X9ECParameters x9ECParameters, BigInteger bigInteger, ECFieldElement[] eCFieldElementArr) {
+        ECPoint normalize = x9ECParameters.getG().normalize();
+        ECPoint normalize2 = normalize.multiply(bigInteger).normalize();
+        if (!normalize.getXCoord().negate().equals(normalize2.getXCoord())) {
+            throw new IllegalStateException("Derivation of GLV Type A parameters failed unexpectedly");
+        }
+        ECFieldElement eCFieldElement = eCFieldElementArr[0];
+        if (!normalize.getYCoord().multiply(eCFieldElement).equals(normalize2.getYCoord())) {
+            eCFieldElement = eCFieldElementArr[1];
+            if (!normalize.getYCoord().multiply(eCFieldElement).equals(normalize2.getYCoord())) {
+                throw new IllegalStateException("Derivation of GLV Type A parameters failed unexpectedly");
+            }
+        }
+        printProperty("Point map", "lambda * (x, y) = (-x, i * y)");
+        printProperty("i", eCFieldElement.toBigInteger().toString(16));
+        printProperty("lambda", bigInteger.toString(16));
+        printScalarDecompositionParameters(x9ECParameters.getN(), bigInteger);
+    }
+
+    private static void printGLVTypeBParameters(X9ECParameters x9ECParameters) {
+        BigInteger[] solveQuadraticEquation = solveQuadraticEquation(x9ECParameters.getN(), ECConstants.ONE, ECConstants.ONE, ECConstants.ONE);
+        ECFieldElement[] findNonTrivialOrder3FieldElements = findNonTrivialOrder3FieldElements(x9ECParameters.getCurve());
+        printGLVTypeBParameters(x9ECParameters, solveQuadraticEquation[0], findNonTrivialOrder3FieldElements);
+        System.out.println("OR");
+        printGLVTypeBParameters(x9ECParameters, solveQuadraticEquation[1], findNonTrivialOrder3FieldElements);
+    }
+
+    private static void printGLVTypeBParameters(X9ECParameters x9ECParameters, BigInteger bigInteger, ECFieldElement[] eCFieldElementArr) {
+        ECPoint normalize = x9ECParameters.getG().normalize();
+        ECPoint normalize2 = normalize.multiply(bigInteger).normalize();
+        if (!normalize.getYCoord().equals(normalize2.getYCoord())) {
+            throw new IllegalStateException("Derivation of GLV Type B parameters failed unexpectedly");
+        }
+        ECFieldElement eCFieldElement = eCFieldElementArr[0];
+        if (!normalize.getXCoord().multiply(eCFieldElement).equals(normalize2.getXCoord())) {
+            eCFieldElement = eCFieldElementArr[1];
+            if (!normalize.getXCoord().multiply(eCFieldElement).equals(normalize2.getXCoord())) {
+                throw new IllegalStateException("Derivation of GLV Type B parameters failed unexpectedly");
+            }
+        }
+        printProperty("Point map", "lambda * (x, y) = (beta * x, y)");
+        printProperty("beta", eCFieldElement.toBigInteger().toString(16));
+        printProperty("lambda", bigInteger.toString(16));
+        printScalarDecompositionParameters(x9ECParameters.getN(), bigInteger);
+    }
+
+    private static void printProperty(String str, Object obj) {
+        StringBuffer stringBuffer = new StringBuffer("  ");
+        stringBuffer.append(str);
+        while (stringBuffer.length() < 20) {
+            stringBuffer.append(' ');
+        }
+        stringBuffer.append(": ");
+        stringBuffer.append(obj.toString());
+        System.out.println(stringBuffer.toString());
+    }
+
+    private static void printScalarDecompositionParameters(BigInteger bigInteger, BigInteger bigInteger2) {
+        BigInteger[] extEuclidGLV = extEuclidGLV(bigInteger, bigInteger2);
+        BigInteger[] bigIntegerArr = {extEuclidGLV[2], extEuclidGLV[3].negate()};
+        BigInteger[] chooseShortest = chooseShortest(new BigInteger[]{extEuclidGLV[0], extEuclidGLV[1].negate()}, new BigInteger[]{extEuclidGLV[4], extEuclidGLV[5].negate()});
+        if (!isVectorBoundedBySqrt(chooseShortest, bigInteger) && areRelativelyPrime(bigIntegerArr[0], bigIntegerArr[1])) {
+            BigInteger bigInteger3 = bigIntegerArr[0];
+            BigInteger bigInteger4 = bigIntegerArr[1];
+            BigInteger divide = bigInteger3.add(bigInteger4.multiply(bigInteger2)).divide(bigInteger);
+            BigInteger[] extEuclidBezout = extEuclidBezout(new BigInteger[]{divide.abs(), bigInteger4.abs()});
+            if (extEuclidBezout != null) {
+                BigInteger bigInteger5 = extEuclidBezout[0];
+                BigInteger bigInteger6 = extEuclidBezout[1];
+                if (divide.signum() < 0) {
+                    bigInteger5 = bigInteger5.negate();
+                }
+                if (bigInteger4.signum() > 0) {
+                    bigInteger6 = bigInteger6.negate();
+                }
+                if (!divide.multiply(bigInteger5).subtract(bigInteger4.multiply(bigInteger6)).equals(ECConstants.ONE)) {
+                    throw new IllegalStateException();
+                }
+                BigInteger subtract = bigInteger6.multiply(bigInteger).subtract(bigInteger5.multiply(bigInteger2));
+                BigInteger negate = bigInteger5.negate();
+                BigInteger negate2 = subtract.negate();
+                BigInteger add = isqrt(bigInteger.subtract(ECConstants.ONE)).add(ECConstants.ONE);
+                BigInteger[] intersect = intersect(calculateRange(negate, add, bigInteger4), calculateRange(negate2, add, bigInteger3));
+                if (intersect != null) {
+                    BigInteger bigInteger7 = intersect[0];
+                    while (true) {
+                        BigInteger bigInteger8 = bigInteger7;
+                        if (bigInteger8.compareTo(intersect[1]) > 0) {
+                            break;
+                        }
+                        BigInteger[] bigIntegerArr2 = {subtract.add(bigInteger8.multiply(bigInteger3)), bigInteger5.add(bigInteger8.multiply(bigInteger4))};
+                        if (isShorter(bigIntegerArr2, chooseShortest)) {
+                            chooseShortest = bigIntegerArr2;
+                        }
+                        bigInteger7 = bigInteger8.add(ECConstants.ONE);
+                    }
+                }
+            }
+        }
+        BigInteger subtract2 = bigIntegerArr[0].multiply(chooseShortest[1]).subtract(bigIntegerArr[1].multiply(chooseShortest[0]));
+        int bitLength = (bigInteger.bitLength() + 16) - (bigInteger.bitLength() & 7);
+        BigInteger roundQuotient = roundQuotient(chooseShortest[1].shiftLeft(bitLength), subtract2);
+        BigInteger negate3 = roundQuotient(bigIntegerArr[1].shiftLeft(bitLength), subtract2).negate();
+        printProperty("v1", "{ " + bigIntegerArr[0].toString(16) + ", " + bigIntegerArr[1].toString(16) + " }");
+        printProperty("v2", "{ " + chooseShortest[0].toString(16) + ", " + chooseShortest[1].toString(16) + " }");
+        printProperty("d", subtract2.toString(16));
+        printProperty("(OPT) g1", roundQuotient.toString(16));
+        printProperty("(OPT) g2", negate3.toString(16));
+        printProperty("(OPT) bits", Integer.toString(bitLength));
+    }
+
+    private static boolean areRelativelyPrime(BigInteger bigInteger, BigInteger bigInteger2) {
+        return bigInteger.gcd(bigInteger2).equals(ECConstants.ONE);
+    }
+
+    private static BigInteger[] calculateRange(BigInteger bigInteger, BigInteger bigInteger2, BigInteger bigInteger3) {
+        return order(bigInteger.subtract(bigInteger2).divide(bigInteger3), bigInteger.add(bigInteger2).divide(bigInteger3));
+    }
+
+    private static ArrayList enumToList(Enumeration enumeration) {
+        ArrayList arrayList = new ArrayList();
+        while (enumeration.hasMoreElements()) {
+            arrayList.add(enumeration.nextElement());
+        }
+        return arrayList;
+    }
+
+    private static BigInteger[] extEuclidBezout(BigInteger[] bigIntegerArr) {
+        BigInteger bigInteger;
+        boolean z = bigIntegerArr[0].compareTo(bigIntegerArr[1]) < 0;
+        if (z) {
+            swap(bigIntegerArr);
+        }
+        BigInteger bigInteger2 = bigIntegerArr[0];
+        BigInteger bigInteger3 = bigIntegerArr[1];
+        BigInteger bigInteger4 = ECConstants.ONE;
+        BigInteger bigInteger5 = ECConstants.ZERO;
+        BigInteger bigInteger6 = ECConstants.ZERO;
+        BigInteger bigInteger7 = ECConstants.ONE;
+        while (true) {
+            bigInteger = bigInteger7;
+            if (bigInteger3.compareTo(ECConstants.ONE) <= 0) {
+                break;
+            }
+            BigInteger[] divideAndRemainder = bigInteger2.divideAndRemainder(bigInteger3);
+            BigInteger bigInteger8 = divideAndRemainder[0];
+            BigInteger bigInteger9 = divideAndRemainder[1];
+            BigInteger subtract = bigInteger4.subtract(bigInteger8.multiply(bigInteger5));
+            BigInteger subtract2 = bigInteger6.subtract(bigInteger8.multiply(bigInteger));
+            bigInteger2 = bigInteger3;
+            bigInteger3 = bigInteger9;
+            bigInteger4 = bigInteger5;
+            bigInteger5 = subtract;
+            bigInteger6 = bigInteger;
+            bigInteger7 = subtract2;
+        }
+        if (bigInteger3.signum() <= 0) {
+            return null;
+        }
+        BigInteger[] bigIntegerArr2 = {bigInteger5, bigInteger};
+        if (z) {
+            swap(bigIntegerArr2);
+        }
+        return bigIntegerArr2;
+    }
+
+    private static BigInteger[] extEuclidGLV(BigInteger bigInteger, BigInteger bigInteger2) {
+        BigInteger bigInteger3 = bigInteger;
+        BigInteger bigInteger4 = bigInteger2;
+        BigInteger bigInteger5 = ECConstants.ZERO;
+        BigInteger bigInteger6 = ECConstants.ONE;
+        while (true) {
+            BigInteger bigInteger7 = bigInteger6;
+            BigInteger[] divideAndRemainder = bigInteger3.divideAndRemainder(bigInteger4);
+            BigInteger bigInteger8 = divideAndRemainder[0];
+            BigInteger bigInteger9 = divideAndRemainder[1];
+            BigInteger subtract = bigInteger5.subtract(bigInteger8.multiply(bigInteger7));
+            if (isLessThanSqrt(bigInteger4, bigInteger)) {
+                return new BigInteger[]{bigInteger3, bigInteger5, bigInteger4, bigInteger7, bigInteger9, subtract};
+            }
+            bigInteger3 = bigInteger4;
+            bigInteger4 = bigInteger9;
+            bigInteger5 = bigInteger7;
+            bigInteger6 = subtract;
+        }
+    }
+
+    private static BigInteger[] chooseShortest(BigInteger[] bigIntegerArr, BigInteger[] bigIntegerArr2) {
+        return isShorter(bigIntegerArr, bigIntegerArr2) ? bigIntegerArr : bigIntegerArr2;
+    }
+
+    private static BigInteger[] intersect(BigInteger[] bigIntegerArr, BigInteger[] bigIntegerArr2) {
+        BigInteger max = bigIntegerArr[0].max(bigIntegerArr2[0]);
+        BigInteger min = bigIntegerArr[1].min(bigIntegerArr2[1]);
+        if (max.compareTo(min) > 0) {
+            return null;
+        }
+        return new BigInteger[]{max, min};
+    }
+
+    private static boolean isLessThanSqrt(BigInteger bigInteger, BigInteger bigInteger2) {
+        BigInteger abs = bigInteger.abs();
+        BigInteger abs2 = bigInteger2.abs();
+        int bitLength = abs2.bitLength();
+        int bitLength2 = abs.bitLength() * 2;
+        return bitLength2 - 1 <= bitLength && (bitLength2 < bitLength || abs.multiply(abs).compareTo(abs2) < 0);
+    }
+
+    private static boolean isShorter(BigInteger[] bigIntegerArr, BigInteger[] bigIntegerArr2) {
+        BigInteger abs = bigIntegerArr[0].abs();
+        BigInteger abs2 = bigIntegerArr[1].abs();
+        BigInteger abs3 = bigIntegerArr2[0].abs();
+        BigInteger abs4 = bigIntegerArr2[1].abs();
+        boolean z = abs.compareTo(abs3) < 0;
+        return z == (abs2.compareTo(abs4) < 0) ? z : abs.multiply(abs).add(abs2.multiply(abs2)).compareTo(abs3.multiply(abs3).add(abs4.multiply(abs4))) < 0;
+    }
+
+    private static boolean isVectorBoundedBySqrt(BigInteger[] bigIntegerArr, BigInteger bigInteger) {
+        return isLessThanSqrt(bigIntegerArr[0].abs().max(bigIntegerArr[1].abs()), bigInteger);
+    }
+
+    private static BigInteger[] order(BigInteger bigInteger, BigInteger bigInteger2) {
+        return bigInteger.compareTo(bigInteger2) <= 0 ? new BigInteger[]{bigInteger, bigInteger2} : new BigInteger[]{bigInteger2, bigInteger};
+    }
+
+    private static BigInteger roundQuotient(BigInteger bigInteger, BigInteger bigInteger2) {
+        boolean z = bigInteger.signum() != bigInteger2.signum();
+        BigInteger abs = bigInteger.abs();
+        BigInteger abs2 = bigInteger2.abs();
+        BigInteger divide = abs.add(abs2.shiftRight(1)).divide(abs2);
+        return z ? divide.negate() : divide;
+    }
+
+    private static BigInteger[] solveQuadraticEquation(BigInteger bigInteger, BigInteger bigInteger2, BigInteger bigInteger3, BigInteger bigInteger4) {
+        BigInteger modSqrt = modSqrt(bigInteger3.multiply(bigInteger3).subtract(bigInteger2.multiply(bigInteger4).shiftLeft(2)).mod(bigInteger), bigInteger);
+        if (modSqrt == null) {
+            throw new IllegalStateException("Solving quadratic equation failed unexpectedly");
+        }
+        BigInteger modInverse = bigInteger2.shiftLeft(1).modInverse(bigInteger);
+        return new BigInteger[]{modSqrt.subtract(bigInteger3).multiply(modInverse).mod(bigInteger), modSqrt.negate().subtract(bigInteger3).multiply(modInverse).mod(bigInteger)};
+    }
+
+    private static ECFieldElement[] findNonTrivialOrder3FieldElements(ECCurve eCCurve) {
+        BigInteger modPow;
+        BigInteger characteristic = eCCurve.getField().getCharacteristic();
+        BigInteger divide = characteristic.divide(ECConstants.THREE);
+        SecureRandom secureRandom = new SecureRandom();
+        do {
+            modPow = BigIntegers.createRandomInRange(ECConstants.TWO, characteristic.subtract(ECConstants.TWO), secureRandom).modPow(divide, characteristic);
+        } while (modPow.equals(ECConstants.ONE));
+        ECFieldElement fromBigInteger = eCCurve.fromBigInteger(modPow);
+        return new ECFieldElement[]{fromBigInteger, fromBigInteger.square()};
+    }
+
+    private static ECFieldElement[] findNonTrivialOrder4FieldElements(ECCurve eCCurve) {
+        ECFieldElement sqrt = eCCurve.fromBigInteger(ECConstants.ONE).negate().sqrt();
+        if (sqrt == null) {
+            throw new IllegalStateException("Calculation of non-trivial order-4  field elements failed unexpectedly");
+        }
+        return new ECFieldElement[]{sqrt, sqrt.negate()};
+    }
+
+    private static BigInteger isqrt(BigInteger bigInteger) {
+        BigInteger shiftRight = bigInteger.shiftRight(bigInteger.bitLength() / 2);
+        while (true) {
+            BigInteger bigInteger2 = shiftRight;
+            BigInteger shiftRight2 = bigInteger2.add(bigInteger.divide(bigInteger2)).shiftRight(1);
+            if (shiftRight2.equals(bigInteger2)) {
+                return shiftRight2;
+            }
+            shiftRight = shiftRight2;
+        }
+    }
+
+    private static void swap(BigInteger[] bigIntegerArr) {
+        BigInteger bigInteger = bigIntegerArr[0];
+        bigIntegerArr[0] = bigIntegerArr[1];
+        bigIntegerArr[1] = bigInteger;
+    }
+
+    private static BigInteger modSqrt(BigInteger bigInteger, BigInteger bigInteger2) {
+        if (bigInteger2.testBit(0)) {
+            BigInteger shiftRight = bigInteger2.subtract(ECConstants.ONE).shiftRight(1);
+            BigInteger bigInteger3 = shiftRight;
+            if (bigInteger.modPow(bigInteger3, bigInteger2).equals(ECConstants.ONE)) {
+                while (!bigInteger3.testBit(0)) {
+                    bigInteger3 = bigInteger3.shiftRight(1);
+                    if (!bigInteger.modPow(bigInteger3, bigInteger2).equals(ECConstants.ONE)) {
+                        return modSqrtComplex(bigInteger, bigInteger3, bigInteger2, shiftRight);
+                    }
+                }
+                return bigInteger.modPow(bigInteger3.add(ECConstants.ONE).shiftRight(1), bigInteger2);
+            }
+            return null;
+        }
+        throw new IllegalStateException();
+    }
+
+    private static BigInteger modSqrtComplex(BigInteger bigInteger, BigInteger bigInteger2, BigInteger bigInteger3, BigInteger bigInteger4) {
+        BigInteger firstNonResidue = firstNonResidue(bigInteger3, bigInteger4);
+        BigInteger bigInteger5 = bigInteger4;
+        while (!bigInteger2.testBit(0)) {
+            bigInteger2 = bigInteger2.shiftRight(1);
+            bigInteger5 = bigInteger5.shiftRight(1);
+            if (!bigInteger.modPow(bigInteger2, bigInteger3).equals(firstNonResidue.modPow(bigInteger5, bigInteger3))) {
+                bigInteger5 = bigInteger5.add(bigInteger5);
+            }
+        }
+        return bigInteger.modInverse(bigInteger3).modPow(bigInteger2.subtract(ECConstants.ONE).shiftRight(1), bigInteger3).multiply(firstNonResidue.modPow(bigInteger5.shiftRight(1), bigInteger3)).mod(bigInteger3);
+    }
+
+    private static BigInteger firstNonResidue(BigInteger bigInteger, BigInteger bigInteger2) {
+        for (int i = 2; i < 1000; i++) {
+            BigInteger valueOf = BigInteger.valueOf(i);
+            if (!valueOf.modPow(bigInteger2, bigInteger).equals(ECConstants.ONE)) {
+                return valueOf;
+            }
+        }
+        throw new IllegalStateException();
+    }
+}

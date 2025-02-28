@@ -1,0 +1,128 @@
+{
+  "projectVersion": 1,
+  "files": [
+    "app-bouncycastle-release.apk"
+  ],
+  "treeExpansions": [
+    [
+      "org",
+      "Quelltexte",
+      "app-bouncycastle-release.apk"
+    ],
+    [
+      "bouncycastle",
+      "org",
+      "Quelltexte",
+      "app-bouncycastle-release.apk"
+    ],
+    [
+      "tls",
+      "bouncycastle",
+      "org",
+      "Quelltexte",
+      "app-bouncycastle-release.apk"
+    ],
+    [
+      "crypto",
+      "tls",
+      "bouncycastle",
+      "org",
+      "Quelltexte",
+      "app-bouncycastle-release.apk"
+    ],
+    [
+      "impl",
+      "crypto",
+      "tls",
+      "bouncycastle",
+      "org",
+      "Quelltexte",
+      "app-bouncycastle-release.apk"
+    ],
+    [
+      "p018bc",
+      "impl",
+      "crypto",
+      "tls",
+      "bouncycastle",
+      "org",
+      "Quelltexte",
+      "app-bouncycastle-release.apk"
+    ]
+  ],
+  "codeData": {
+    "comments": [],
+    "renames": []
+  },
+  "openTabs": [
+    {
+      "type": "class",
+      "tabPath": "org.bouncycastle.tls.TlsUtils",
+      "subPath": "java",
+      "caret": 3137,
+      "view": {
+        "x": 16,
+        "y": 912
+      }
+    },
+    {
+      "type": "class",
+      "tabPath": "org.bouncycastle.tls.crypto.TlsSecret",
+      "subPath": "java",
+      "caret": 205,
+      "view": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "class",
+      "tabPath": "org.bouncycastle.tls.SecurityParameters",
+      "subPath": "java",
+      "caret": 5154,
+      "view": {
+        "x": 0,
+        "y": 3068
+      }
+    },
+    {
+      "type": "class",
+      "tabPath": "org.bouncycastle.tls.crypto.impl.bc.BcTlsCrypto",
+      "subPath": "java",
+      "caret": 3130,
+      "view": {
+        "x": 0,
+        "y": 466
+      }
+    },
+    {
+      "type": "class",
+      "tabPath": "org.bouncycastle.tls.crypto.impl.bc.BcTlsSecret",
+      "subPath": "java",
+      "caret": 470,
+      "view": {
+        "x": 2,
+        "y": 0
+      }
+    },
+    {
+      "type": "class",
+      "tabPath": "org.bouncycastle.tls.crypto.impl.AbstractTlsSecret",
+      "subPath": "java",
+      "caret": 953,
+      "view": {
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "activeTab": 2,
+  "cacheDir": "app-bouncycastle-release.apk.cache",
+  "enableLiveReload": false,
+  "searchHistory": [
+    "master secret",
+    "exp m",
+    "ap tr",
+    "hs tr"
+  ]
+}
