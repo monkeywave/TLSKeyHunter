@@ -10,12 +10,13 @@ import ghidra.program.model.listing.DataIterator;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
-
+import ghidra.program.model.pcode.*;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import ghidra.program.model.lang.Register;
-import ghidra.program.model.pcode.*;
+import java.util.Iterator;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import ghidra.program.model.scalar.Scalar;
@@ -30,8 +31,10 @@ import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 
@@ -66,6 +69,11 @@ import java.util.jar.JarInputStream;
 [*] Function offset (IDA with base 0x0): 17FF110EC (0x17FF110EC)
 
 
+- chrome: we need to ensure if the label is not provided as an argument to a function we have to keep following the jmp instruction to find its invocation
+
+For Go Binaries I can say if there are symbols looks for the symbol to crypto_tls_prf10
+Otherwise I need to identify the crypto_tls_pHash 
+
  */
 public class TLSKeyHunter extends GhidraScript {
 
@@ -92,8 +100,36 @@ public class Pair<K, V> {
 
     // Global variable
     private static List<Pair<Function, Address>> globalFunctionAddressPairs = new ArrayList<>();
-    private static final String VERSION = "0.9.4.0";
-    private static final boolean DEBUG_RUN = true;
+    private static final String VERSION = "0.9.4.1";
+    private static boolean DEBUG_RUN = true;
+    private static boolean is_go_binary = false;
+    private static boolean is_rust_binary = false;
+    private static boolean found_hkdf_string_without_ref = false;
+    private static boolean found_prf_string_without_ref = false;
+    private static boolean is_windows_binary = false;
+
+    private boolean is_target_binary_a_rust_binary(){
+        SymbolTable symbolTable = currentProgram.getSymbolTable();
+            
+            String[] rustSymbols = {
+                "rust_eh_personality", 
+                "core::panicking::panic_fmt",
+                "alloc::alloc::alloc",
+                "std::rt::lang_start",
+                "_ZN3std2rt10lang_start",
+                "DW.ref.rust_eh_personality"
+            };
+            
+            for (Symbol symbol : symbolTable.getAllSymbols(true)) {
+                for (String rustSymbol : rustSymbols) {
+                    if (symbol.getName().contains(rustSymbol)) {
+                        System.out.println("🚀 Rust Binary Detected! Symbol found: " + symbol.getName());
+                        return true; // Stop early if Rust is confirmed
+                    }
+                }
+            }
+            return false;
+    }
 
     private void printTLSKeyHunterLogo() {
         System.out.println("");
@@ -142,6 +178,13 @@ public class Pair<K, V> {
         Listing listing = program.getListing();
         int addressSize = program.getAddressFactory().getDefaultAddressSpace().getPointerSize();
         Address refAddress = null;
+
+        boolean print_go_debug = false;
+
+        if(TLSKeyHunter.is_go_binary){
+            System.out.println("We are beginning to trace...");
+            print_go_debug=  true;
+        }
     
         Address currentAddress = startAddress;
     
@@ -196,14 +239,99 @@ public class Pair<K, V> {
         return null;
     }
 
+    private Address findHexStringInRodata(String targetString, boolean  do_print_info_msg) {
+        Set<Function> functions = new HashSet<>();
+        //Pair<Function, Address> functionAddressPair;
+        Address referenceAddress = null;
+
+        byte[] targetBytes = targetString.getBytes(); // Convert the target string to bytes
+        Memory memory = currentProgram.getMemory();
+        MemoryBlock rodataBlock = memory.getBlock(".rodata"); // Locate the .rodata section
+
+        if (rodataBlock == null) {
+            rodataBlock = memory.getBlock(".rdata"); // Locate the .rodata section
+            if (rodataBlock == null) {
+                if(do_print_info_msg){
+                    System.out.println("[-] .rodata section not found!");
+                }
+                return null;
+            }
+        }
+
+        Address start = rodataBlock.getStart();
+        Address end = rodataBlock.getEnd();
+
+        byte[] littleEndianPattern = new byte[targetBytes.length];
+        for (int i = 0; i < targetBytes.length; i++) {
+            littleEndianPattern[i] = targetBytes[targetBytes.length - 1 - i];
+        }
+
+        // Variants of the pattern
+        byte[] bigEndianWithNull = appendByte(targetBytes, (byte) 0x00);
+        byte[] bigEndianWithSpace = appendByte(targetBytes, (byte) 0x20);
+        byte[] littleEndianWithNull = appendByte(littleEndianPattern, (byte) 0x00);
+        byte[] littleEndianWithSpace = appendByte(littleEndianPattern, (byte) 0x20);
+        Address foundAddress = null;
+
+        try {
+
+            // First, search for the big-endian pattern
+            foundAddress = searchPatterns(memory, start, end,
+            new byte[][] {bigEndianWithNull, bigEndianWithSpace, targetBytes});
+            if (foundAddress != null && DEBUG_RUN && do_print_info_msg) {
+                System.out.println("[*] Found big-endian pattern at: " + foundAddress);
+    
+            }
+
+            if(foundAddress == null){
+                // If not found, search for the little-endian pattern
+                foundAddress = searchPatterns(memory, start, end,
+                    new byte[][] {littleEndianWithNull, littleEndianWithSpace, littleEndianPattern});
+                if (foundAddress != null && DEBUG_RUN && do_print_info_msg) {
+                    System.out.println("[*] Found little-endian pattern at: " + foundAddress);
+                }
+            }
+
+        } catch (MemoryAccessException e) {
+            System.err.println("[-] Error accessing memory: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("[-] Error in pattern identification: " + e.getMessage());
+        }
+
+
+        if(foundAddress != null){
+            if(do_print_info_msg){
+                System.out.println("[*] String found in .rodata section at address: " + foundAddress);
+            }
+            return foundAddress;
+            
+        }else{
+            if(do_print_info_msg){
+                System.err.println("[-] Unable to find pattern in .rodata section as well: "+foundAddress);
+            }
+        }
+        
+        return null;
+    }
+
+    private Address findHexStringInRodataWrapper(String stringToFind, boolean do_print_info_msg) {
+    if(do_print_info_msg){
+        System.out.println("[*] Searching for hex representation of: " + stringToFind);
+    }
+    return findHexStringInRodata(stringToFind, do_print_info_msg); // Assumes this method exists as per your script
+}
+
 
     private Address findStringInRodata() throws Exception {
         Memory memory = currentProgram.getMemory();
         MemoryBlock rodataBlock = memory.getBlock(".rodata");
     
         if (rodataBlock == null) {
-            System.err.println("[-] No .rodata section found.");
-            return null;
+            rodataBlock = memory.getBlock(".rdata"); // if we have a pe file
+            if (rodataBlock == null) {
+                System.err.println("[-] No .rodata section found.");
+                return null;
+            }
         }
     
         Address start = rodataBlock.getStart();
@@ -270,8 +398,26 @@ public class Pair<K, V> {
     private List<Pair<Function, Address>> findFunctionReferences(Address dataRelRoAddress, String sectionName) {
         List<Pair<Function, Address>> functionAddressPairs = new ArrayList<>();
 
+        boolean is_go_binary = TLSKeyHunter.is_go_binary;
+
+
         ReferenceManager referenceManager = currentProgram.getReferenceManager();
         ReferenceIterator references = referenceManager.getReferencesTo(dataRelRoAddress);
+
+        if(is_go_binary){
+            System.out.println("Do we have more references: "+references.hasNext());
+            System.out.println("Infos about finding: address="+dataRelRoAddress+" + sectioname="+sectionName);
+            Reference[] referencesArray = referenceManager.getReferencesFrom(dataRelRoAddress);
+            System.out.println("referenceManager.getReferencesFrom(dataRelRoAddress): "+referencesArray.length);
+            Reference[] referencesGo = getReferencesTo(dataRelRoAddress);
+            System.out.println("Found nth references in go: "+referencesGo.length);
+
+        }
+
+        if(references.hasNext() == false){
+            System.out.println("[*] We found string but it has no reference");
+            return functionAddressPairs;
+        }
 
         while (references.hasNext()) {
             Reference reference = references.next();
@@ -289,7 +435,7 @@ public class Pair<K, V> {
                     String blockName = block.getName();
             
                     // Determine if the address belongs to a data section
-                    if (blockName.contains(".data") || blockName.contains(".rodata")) {
+                    if (blockName.contains(".data") || blockName.contains(".rodata") || blockName.contains(".rdata")) {
                         if(DEBUG_RUN){
                             System.out.println("[!] The address is pointing to another data section:"+blockName+ " at address: "+refAddress);
                         }
@@ -307,6 +453,8 @@ public class Pair<K, V> {
             }
 
         }
+        
+        
 
         return functionAddressPairs;
     }
@@ -444,16 +592,20 @@ public class Pair<K, V> {
         return sb.reverse().toString(); // Reverse due to little-endian storage
     }
 
-    private String analyzeInstructionOperands(Instruction instruction){
+    private Pair<String, Long> analyzeInstructionOperands(Instruction instruction, boolean is_load_op){
         if(DEBUG_RUN){
             System.out.println("[!] (analyzeInstructionOperands) instr.getNumOperands(): "+instruction.getNumOperands());
         }
-        String base_register_name = "UNKNOWN";
+        String base_register_name = "Unknown";
         String hex_offset = "0";
+        Long hex_long_offset = (long) 0;
 
         // Analyze the first operand (destination) to extract RBP and offset
         if (instruction.getMnemonicString().toUpperCase().equals("MOV") && instruction.getNumOperands() > 0) {
             Object[] opObjects = instruction.getOpObjects(0);
+            if(is_load_op){
+                opObjects = instruction.getOpObjects(1);
+            }
 
             Register baseRegister = null;
             long offset = 0;
@@ -469,6 +621,7 @@ public class Pair<K, V> {
                 else if (opObject instanceof Scalar) {
                     offset = ((Scalar) opObject).getValue();
                     hex_offset = toSignedHexString(offset);
+                    hex_long_offset = offset;
                     if(DEBUG_RUN){
                         System.out.println("[!] Offset: " + hex_offset);
                     }
@@ -487,7 +640,8 @@ public class Pair<K, V> {
 
         }
 
-        return "["+base_register_name+" +"+hex_offset+"]";
+        //return "["+base_register_name+" +"+hex_offset+"]";
+        return new Pair<>(base_register_name, hex_long_offset);
     }
 
 
@@ -511,6 +665,47 @@ public class Pair<K, V> {
             }
         }
         return false;
+    }
+
+
+    private boolean is_target_binary_a_go_binary(){
+        Program program = getCurrentProgram();
+        Memory memory = program.getMemory();
+        
+        // 1) Check for a dedicated ".gopclntab" block
+        MemoryBlock gopclntab = memory.getBlock(".gopclntab");
+        if (gopclntab != null) {
+            return true;
+        }
+
+        // 2) Optionally check for ".go.buildinfo"
+        MemoryBlock gobuild = memory.getBlock(".go.buildinfo");
+        if (gobuild != null) {
+            return true;
+        }
+
+
+
+        SymbolTable symbolTable = currentProgram.getSymbolTable();
+            
+            String[] goSymbols = {
+                "x_cgo_munmap.cold", 
+                "main.main",
+                "runtime.main",
+                "_cgo_wait_runtime_init_done",
+                "runtime.goexit1.abi0",
+                "runtime.gogetenv"
+            };
+            
+            for (Symbol symbol : symbolTable.getAllSymbols(true)) {
+                for (String goSymbol : goSymbols) {
+                    if (symbol.getName().contains(goSymbol)) {
+                        System.out.println("🚀 Go Binary Detected! Symbol found: " + symbol.getName());
+                        return true; // Stop early if Go is confirmed
+                    }
+                }
+            }
+            return false;
     }
 
 
@@ -1111,7 +1306,7 @@ private void extractFunctionInfo(Function function, Address referenceAddress, Bo
     if(byteData.length <= 12){
         System.out.println("[*] LAst Instruction: "+lastInstruction.toString() + " last mnemomic: "+lastInstruction.getMnemonicString());
         if(lastInstruction.getMnemonicString().toLowerCase().contains("jbe")){
-            System.out.println("[*] Probably a GO function. We have to extend the the length");
+            System.out.println("[*] Probably a Go function. We have to extend the the length");
             
             lengthPair = getLengthUntilBranch(function, is_hkdf, do_we_have_two_master_sec_labels, true);
             numBytes = lengthPair.getFirst();
@@ -1377,6 +1572,14 @@ private long get_Register_Offset(PcodeOp addrOp){
     return totalOffset;
 }
 
+    private boolean isPEfile(){
+        String format = currentProgram.getExecutableFormat();
+        if (format != null && format.contains("PE")) {
+            return true;
+        }
+        return false;
+    }
+
 // Helper function to get the first argument register for a given calling convention
 private String getFirstArgRegister() {
     String languageID = currentProgram.getLanguageID().toString();
@@ -1491,6 +1694,134 @@ private Pair<Address, Function> getCallTarget(Instruction instruction) {
     return null; // No address found
 }
 
+/*
+ * An alternative approach for register  tracking:
+ * 
+ * 
+ * import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.lang.Register;
+import ghidra.program.model.listing.*;
+import ghidra.program.model.pcode.*;
+import ghidra.program.model.symbol.Reference;
+import java.util.*;
+
+public class ForwardDataFlowTracker extends GhidraScript {
+
+    private Set<Varnode> trackedLocations = new HashSet<>();
+    private Set<Address> processedAddrs = new HashSet<>();
+    private Function currentFunction;
+
+    @Override
+    public void run() throws Exception {
+        // Initialize starting point
+        Address startAddr = toAddr("0x00401234"); // Replace with your start address
+        currentFunction = getFunctionContaining(startAddr);
+        if (currentFunction == null) {
+            println("No function containing start address!");
+            return;
+        }
+
+        // Get initial varnode (register or memory) to track
+        Instruction startInstr = getInstructionAt(startAddr);
+        Varnode startVarnode = getInitialVarnode(startInstr); // Implement based on your context
+        if (startVarnode != null) {
+            trackedLocations.add(startVarnode);
+            performDataFlowAnalysis();
+        }
+    }
+
+    private void performDataFlowAnalysis() {
+        Queue<Instruction> worklist = new LinkedList<>();
+        worklist.addAll(getInstructionsFrom(currentFunction));
+
+        while (!worklist.isEmpty()) {
+            Instruction instr = worklist.poll();
+            if (processedAddrs.contains(instr.getAddress())) continue;
+            
+            processInstruction(instr);
+            checkForFunctionArgs(instr);
+            
+            processedAddrs.add(instr.getAddress()));
+            worklist.addAll(getNextInstructions(instr));
+        }
+    }
+
+    private void processInstruction(Instruction instr) {
+        for (PcodeOp op : instr.getPcode()) {
+            // Handle COPY operations (register-to-register transfers)
+            if (op.getOpcode() == PcodeOp.COPY) {
+                Varnode input = op.getInput(0);
+                Varnode output = op.getOutput();
+                if (trackedLocations.contains(input)) {
+                    trackedLocations.add(output);
+                }
+            }
+            
+            // Handle LOAD/STORE operations (memory accesses)
+            if (op.getOpcode() == PcodeOp.LOAD || op.getOpcode() == PcodeOp.STORE) {
+                Varnode addrVarnode = op.getInput(1); // Memory address being accessed
+                if (isTrackedMemoryLocation(addrVarnode)) {
+                    if (op.getOpcode() == PcodeOp.LOAD) {
+                        trackedLocations.add(op.getOutput());
+                    } else {
+                        // Handle STORE by tracking memory location
+                        trackedLocations.add(addrVarnode);
+                    }
+                }
+            }
+        }
+    }
+
+    private void checkForFunctionArgs(Instruction instr) {
+        if (!instr.getMnemonicString().equals("CALL")) return;
+        
+        Reference[] refs = instr.getReferencesFrom();
+        for (Reference ref : refs) {
+            if (ref.getReferenceType().isCall()) {
+                Function calledFunc = getFunctionAt(ref.getToAddress());
+                if (calledFunc != null) {
+                    checkParameterUsage(instr, calledFunc);
+                }
+            }
+        }
+    }
+
+    private void checkParameterUsage(Instruction callInstr, Function calledFunc) {
+        int[] argIndexes = {0, 1, 2, 3}; // x64: RDI, RSI, RDX, RCX
+        for (int i : argIndexes) {
+            Varnode argVarnode = getCallArgument(callInstr, i);
+            if (argVarnode != null && trackedLocations.contains(argVarnode)) {
+                println("🔥 Argument " + (i+1) + " of call to " + calledFunc.getName() + 
+                      " at " + callInstr.getAddress() + " contains tracked value!");
+            }
+        }
+    }
+
+    // Helper methods
+    private List<Instruction> getNextInstructions(Instruction instr) {
+        // Get subsequent instructions in execution flow
+        // (Simplified - should handle branches)
+        return List.of(instr.getNext());
+    }
+
+    private boolean isTrackedMemoryLocation(Varnode addrVarnode) {
+        // Check if memory address matches tracked stack/base+offset patterns
+        // (Implement pattern matching for [REG +/- offset])
+        return trackedLocations.stream()
+            .anyMatch(v -> v.getAddress().equals(addrVarnode.getAddress()));
+    }
+
+    private Varnode getCallArgument(Instruction callInstr, int argIndex) {
+        // Get argument varnode based on calling convention
+        // (Simplified for x64 System V ABI)
+        PcodeOp[] pcode = callInstr.getPcode();
+        return (pcode.length > argIndex) ? pcode[argIndex].getInput(0) : null;
+    }
+}
+ * 
+ * 
+ */
 
 
 private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startInstruction, Varnode trackedVarnode, Boolean is_hkdf, long offset) {
@@ -1498,6 +1829,8 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
     Function function = currentProgram.getFunctionManager().getFunctionContaining(startInstruction.getAddress());
     Address functionEnd = function.getBody().getMaxAddress();
     Varnode oldtrackedVarnode = trackedVarnode;
+
+    boolean is_go_binary = is_target_binary_a_go_binary();
 
 
     Register resultRegister = getRegisterForVarnode(trackedVarnode);
@@ -1526,6 +1859,29 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
     // Track stack offsets (only relevant for x86)
     long stackOffset = offset;
 
+
+    /*try{
+        PcodeOp[] pcodeOps = currentInstruction.getPcode();
+        for (PcodeOp pcodeOp : pcodeOps) {
+            System.out.println("DEBUG: getDescendants: "+ pcodeOp.getOutput().getDescendants());
+            for (Varnode tmpInVarnode : pcodeOp.getInputs()) {
+                System.out.println("INPUT: "+tmpInVarnode+"  descentor:  "+tmpInVarnode.getDescendants());
+                if(tmpInVarnode.getDescendants() != null){
+                    Iterator<PcodeOp> descendants = tmpInVarnode.getDescendants();
+                    while (descendants.hasNext()) {
+                        PcodeOp op = descendants.next();
+                        System.out.println("Operation using target Varnode: " + op);
+                    }
+
+                }
+            }
+        }
+        
+
+    }catch(Exception e){
+
+    }*/
+
     
     while (currentInstruction != null && currentInstruction.getAddress().compareTo(functionEnd) <= 0) {
         previous_pcode_was_copy = false; // ensure that it has only the scope for the current analyzed instruction
@@ -1536,9 +1892,12 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
             //System.out.println("Analyzing instruction: " + currentInstruction);
         }
 
+        
+
 
         PcodeOp[] pcodeOps = currentInstruction.getPcode();
         for (PcodeOp pcodeOp : pcodeOps) {
+             //System.out.println("DEBUG: pcodeOp.getOpcode()="+pcodeOp.getMnemonic()+"  pcodeOp: "+pcodeOp);
 
             if (isARM && (pcodeOp.getOpcode() == PcodeOp.BRANCH || pcodeOp.getOpcode() == PcodeOp.BRANCHIND)) {
                 if(DEBUG_RUN){
@@ -1582,7 +1941,23 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
 
                 }*/
                 
-                if (input.equals(trackedVarnode) || pcodeOp.getOpcode() == PcodeOp.CALL || pcodeOp.getOpcode() == PcodeOp.CALLIND) { 
+                if (input.equals(trackedVarnode) || pcodeOp.getOpcode() == PcodeOp.CALL || pcodeOp.getOpcode() == PcodeOp.CALLIND) {
+                    
+                    if(is_go_binary && currentInstruction.toString().toLowerCase().startsWith("call")){
+                        Pair<Address, Function> result = getCallTarget(currentInstruction);
+                        if (result != null) {
+                            Function targetFunction = result.second;
+                            if(targetFunction.getName().startsWith("runtime_") || targetFunction.getName().startsWith("fmt_") || targetFunction.getName().startsWith("runtime.") || targetFunction.getName().startsWith("fmt.")){
+                                if(DEBUG_RUN){
+                                    System.out.println("[!] Wrong target! Skipping function "+targetFunction.getName()+ "() ...");
+                                }
+                                
+                                continue;
+                            }
+                        }
+                        
+
+                    }
                     
                     if (pcodeOp.getOpcode() == PcodeOp.COPY && input.equals(trackedVarnode) && !currentInstruction.toString().toLowerCase().startsWith("push")){
                         for (int j = 0; j < pcodeOps.length; j++) {
@@ -1652,6 +2027,7 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
 
                                 if (targetFunction != null) {
                                     System.out.println("[*] Function name: " + targetFunction.getName());
+                                    label = targetFunction.getName().toUpperCase();
                                 } else {
                                     System.err.println("[-] No function defined at the target address. Defaulting to offset-method...");
                                     label = "indirect function: "+currentInstruction.toString();
@@ -1659,7 +2035,8 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
                                     nextCallAddr = currentInstruction.getAddress();
                                 }
 
-                                label = targetFunction.getName().toUpperCase();
+
+                                
                                 nextCallAddr = targetAddress; 
 
                             } else {
@@ -1723,13 +2100,41 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
                 Varnode base = pcodeOp.getInput(0);   // Base register
                 Varnode constant = pcodeOp.getInput(1); // Offset
 
-                if (base.isRegister()) {
-                    baseRegister = getRegisterForVarnode(base);
-                    registerName = baseRegister.getName();
+                /*
+                 * we have to check this but afaik this needs to be applied for all binaries
+                 */
+                if(is_windows_binary ){
+                    if(currentInstruction.getPcode().toString().contains(trackedVarnode.toString())){
+                        System.out.println("[!] Current instruction contains tracked varnode: "+trackedVarnode);
+                        if (base.isRegister()) {
+                        
+                            baseRegister = getRegisterForVarnode(base);
+                            registerName = baseRegister.getName();
+                        }
+                        if (constant.isConstant()) {
+                            stack_offset = constant.getOffset();
+                        }
+
+                    }
+                }else{
+                    if (base.isRegister()) {
+                        
+                        baseRegister = getRegisterForVarnode(base);
+                        registerName = baseRegister.getName();
+                    }
+                    if (constant.isConstant()) {
+                        stack_offset = constant.getOffset();
+                    }
+
                 }
-                if (constant.isConstant()) {
-                    stack_offset = constant.getOffset();
-                }
+
+                
+
+                /*
+                 * it seems that the varnode is not as uniuqe as expected - better apply tracking other feature or additional features
+                 */
+
+                //System.out.println("--- trying to set new values: regiuste rname: "+ registerName+ " register values: "+toSignedHexString(stack_offset));
             }
 
             // Check if the tracked register is copied/moved to another register or used to store it later
@@ -1809,6 +2214,8 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
 
             }
 
+            
+
             if(pcodeOp.getOpcode() == PcodeOp.LOAD && previous_pcode_was_intadd){
                 String tmp_mem_location =  "["+registerName +" + "+toSignedHexString(stack_offset)+"]";
 
@@ -1822,6 +2229,41 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
                 }
             }
 
+
+            if(pcodeOp.getOpcode() == PcodeOp.LOAD && track_register_stored_in_mem){
+                for (Varnode input : pcodeOp.getInputs()) {
+                    if (input.equals(trackedVarnode)){
+                        try{
+                            Pair<String, Long> memPair = analyzeInstructionOperands(currentInstruction, true); //old way might not work with the load part --> have to check that
+                            String current_registerName = memPair.getFirst();
+                            long current_stack_offset = memPair.getSecond();
+                            String current_track_register_var = "["+current_registerName+" + "+toSignedHexString(current_stack_offset)+"]";
+
+                            /*
+                             * This way we ensure that we really have right target
+                             * in rare occasion we can identify the right trackedVarnode but with different stack offset
+                             * This might still need further improvements
+                             */
+
+                            if(track_register_var.equals(current_track_register_var)){
+                                is_master_sec_length_provided = false;
+                                track_register_stored_in_mem = false;
+                                previous_pcode_was_load = true;
+                                can_we_use_next_call = true;
+                                previous_pcode_was_intadd = false;
+
+                            }
+                        }catch(Exception e){
+                            e.printStackTrace();
+                            
+                        }
+                    }else{
+                        previous_pcode_was_load = false;
+                    }
+                }
+                continue;
+            }
+
             if(pcodeOp.getOpcode() == PcodeOp.STORE && pcodeOp.getOpcode() != PcodeOp.CALL && !currentInstruction.toString().toUpperCase().startsWith("CALL")){
 
                 Varnode destAddress = pcodeOp.getInput(1);  // Memory address being written to ([RBP - 0x58])
@@ -1832,9 +2274,140 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
                 // Check if there was a copy operation which got the tracked varnode as input
                 if (previous_pcode_was_copy) {
                     System.out.println("[!] Store operation with the tracked varnode: "+currentInstruction);
+
+                    if(is_windows_binary || registerName.equals("Unknown")){
+                        Pair<String, Long> memPair = analyzeInstructionOperands(currentInstruction, false); //old way might not work with the load part --> have to check that
+                        registerName = memPair.getFirst();
+                        stack_offset = memPair.getSecond();
+                        track_register_var = "["+registerName+" + "+toSignedHexString(stack_offset)+"]";
+                    }else{
+                        track_register_var = "["+registerName +" + "+toSignedHexString(stack_offset)+"]";
+                    }
+
+                    /*
+                     * 
+                     * Common Pcode Operations for Read/Write
+                        Operation	Type	Description
+                        LOAD	    Read	Loads data from memory.
+                        STORE	    Write	Writes data to memory.
+                        COPY	    Write	Copies data to a destination.
+                        INT_ADD	    Read	Inputs may reference the address.
+                     * 
+                     * 
+                     */
+                    System.out.println(destAddress.getDescendants());
                     
-                    //track_register_var = analyzeInstructionOperands(currentInstruction); //old way might not work with the load part --> have to check that
-                    track_register_var = "["+registerName +" + "+toSignedHexString(stack_offset)+"]";
+
+                    System.out.println(destAddress.getLoneDescend());
+                    System.out.println(currentInstruction.getFlows());
+
+
+                    ReferenceIterator refIter = currentInstruction.getReferenceIteratorTo();
+                    while(refIter.hasNext()){
+                        Reference reference = refIter.next();
+                        //reference.getToAddress()
+                        System.out.println("REF: reference.getToAddress():"+reference.getToAddress()+ " reference.getReferenceType(): "+reference.getReferenceType());
+                        System.out.println("REF: reference.from():"+reference.getFromAddress());
+                        
+                        //reference.rea
+                        // 180008f5c		MOV param_2=>s_s_ap_traffic_18001e800,qword ptr [RSP + server_label]	READ
+                        //Address refAddress = reference.getFromAddress();
+                        //Function function = getFunctionContaining(refAddress);
+                    }
+
+                    try{
+
+                        Varnode mytargetVarnode = destAddress; // Implement your logic to define this
+
+                        if (mytargetVarnode != null) {
+                            // Iterate over all Pcode operations that use this Varnode as input
+                            Iterator<PcodeOp> descendants = mytargetVarnode.getDescendants();
+                            if(descendants == null){
+                                descendants = trackedVarnode.getDescendants();
+
+                            }
+                            while (descendants.hasNext()) {
+                                PcodeOp op = descendants.next();
+                                println("Varnode used in op: " + op + " at " + op.getSeqnum().getTarget());
+                            }
+
+                        }
+                    }catch(Exception e){
+                        e.printStackTrace();
+                    }
+
+                    
+
+                    //currentInstruction.INSTRUCTION_PROPERTY
+                    
+                    
+                    System.out.println("[!!] Old way --> track_register_var: "+track_register_var);
+                    
+
+                    //System.out.println("[!!] registerName: "+registerName);
+                    //System.out.println("[!!] track_register_var: "+track_register_var);
+                    //System.out.println("[!!] trackedVarnode: "+trackedVarnode);
+                    //System.out.println("[!!] trackedVarnode.isRegister(): "+trackedVarnode.isRegister());
+                    //System.out.println("[!!] registerName: "+registerName);
+
+                    /*
+                     * Future improvements
+                     * 
+                     * 
+                     * {
+        // Find the address of the label (e.g., "[RSP + server_label]")
+        String targetLabel = "server_label";
+        Address targetAddress = findLabelAddress(targetLabel);
+        if (targetAddress == null) {
+            println("Label '" + targetLabel + "' not found!");
+            return;
+        }
+
+        // Iterate over all instructions in the program
+        Listing listing = currentProgram.getListing();
+        InstructionIterator instructions = listing.getInstructions(true);
+        while (instructions.hasNext()) {
+            Instruction instr = instructions.next();
+            PcodeOp[] pcodeOps = instr.getPcode();
+
+            // Check each Pcode operation for read/write access to the target address
+            for (PcodeOp op : pcodeOps) {
+                checkForAccess(op, targetAddress);
+            }
+        }
+    }
+
+    // Find the address of the given label
+    private Address findLabelAddress(String labelName) {
+        SymbolTable symbolTable = currentProgram.getSymbolTable();
+        Symbol[] symbols = symbolTable.getSymbols(labelName);
+        return (symbols.length > 0) ? symbols[0].getAddress() : null;
+    }
+
+    // Check if a Pcode operation reads/writes to the target address
+    private void checkForAccess(PcodeOp op, Address targetAddress) {
+        Varnode output = op.getOutput();
+        Varnode[] inputs = op.getInputs();
+
+        // Check for WRITE access (output matches target address)
+        if (output != null && output.getAddress().equals(targetAddress)) {
+            println("🖊️ WRITE at " + op.getSeqnum().getTarget() + 
+                    " via op: " + op.getMnemonic());
+        }
+
+        // Check for READ access (input matches target address)
+        for (Varnode input : inputs) {
+            if (input.getAddress().equals(targetAddress)) {
+                println("📖 READ at " + op.getSeqnum().getTarget() + 
+                        " via op: " + op.getMnemonic());
+            }
+        }
+    }
+}
+                     * 
+                     * 
+                     */
+
 
                     oldRegister = getRegisterForVarnode(trackedVarnode);
 
@@ -1845,6 +2418,7 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
                     }
 
                     trackedVarnode = destAddress; // Register baseRegister, long offset
+                    System.out.println("[!!] New value for trackedVarnode = destAddress --> :"+destAddress);
 
                     previous_pcode_was_copy = false;
                     if(isX86 == false){ // on x86 the mem location is used for argument passing
@@ -1885,7 +2459,7 @@ private Map.Entry<Address, String> trackFunctionUsingRegister(Instruction startI
                 System.out.println("[-] Error! A second rerun shouldn't happen...");
                 System.exit(2);
             }
-            System.out.println("[*] Next instruction is outside the function scope. Stopping analysis.");
+            System.out.println("[*] Next instruction is outside the function scope. Stopping analysis at "+currentInstruction.getAddress().toString());
 
             // Rerun the analysis (reset to the start of the function)
             System.out.println("[*] Rerunning analysis for function: " + function.getName());
@@ -2370,6 +2944,11 @@ private Address findFunctionCallUsingResult(Address startAddress) {
     }
 
     private String get_ida_address(Address ghidra_address){
+
+        if(is_windows_binary){
+            // IDA is using usually for windows binary the same image base as ghidra for windows binaries (0x180000000) 
+            return ghidra_address.toString().toUpperCase();
+        }
         /*                                    
         The default base address in Ghidra is 0x00010000 for 32bit and 0x00100000 for 64bit and in IDA it is 
         just 0x0 therefore we just do the math here
@@ -2468,6 +3047,16 @@ private Address findFunctionCallUsingResult(Address startAddress) {
                 }
                 if(functionAddressPairs.size() < 1){
                     System.out.println("[-] Unable to find the String:\"hs traffic\" in all of its occiouns in the target binary");
+                    
+                    System.out.println("[*] Check if we have a reference to String \"c ap traffic\" in the target binary");
+                    foundAddress = findHexStringInRodataWrapper("c ap traffic", false);
+                    if(foundAddress != null){
+                        functionAddressPairs = findFunctionReferences(foundAddress,".rodata");
+                        if(functionAddressPairs.size() < 1){
+                            System.out.println("[-] Unable to find any Strings related to TLS 1.3 in all of its occiouns in the target binary");
+                            return;
+                        }
+                    }
                     return;
                 }
                 Pair<Function, Address> result = functionAddressPairs.get(0); // libnativetunnel.so error
@@ -2506,16 +3095,53 @@ private Address findFunctionCallUsingResult(Address startAddress) {
                 }
             }
             if(analysis_error_code == 42 || functionAddressPairs.isEmpty()){
-                String identifier_tls12_prf_export = "extended master secret";
-                System.out.println();
-                System.out.println("[*] String master secret wasn't found in binary! Trying another approach...");
-                System.out.println("[*] Start identifying the PRF by looking for String \"" + identifier_tls12_prf_export+"\"");
+                List<Pair<Function, Address>> functionAddressPairs_rerun = null;
+                Pair<Function, Address> result_rerun = null;
+                Function function_which_has_reference_rerun = null;
+                Address referenceAddress_result_rerun = null;
+
+                List<Pair<Function, Address>> functionAddressPairs_rerun_check = findStringUsage("session hash for extended master secret");
+                // it can happen that the library is actually using hex strings but has some missleading debug strings
+                if(functionAddressPairs_rerun_check.size() != 0){
+                    Pair<Function, Address> result_rerun_check = functionAddressPairs_rerun_check.get(0);
+                    Address referenceAddress_result_rerun_check = result_rerun_check.getSecond();
+                    if(referenceAddress_result_rerun_check != null){
+                        // seems like we really have such a debug string - therefore we start directly looking for the hex representation...
+                        Address foundAddress = findHexStringInRodataWrapper("master secret",false);
+                        functionAddressPairs = findFunctionReferences(foundAddress,".rodata");
+                        for(Pair<Function, Address> fctPair : functionAddressPairs){
+                            function_which_has_reference_rerun = fctPair.getFirst();
+                            if(result_rerun_check.getFirst() == function_which_has_reference_rerun ||result_rerun_check.getFirst().getName().equals(function_which_has_reference_rerun.getName()) ){
+                                result_rerun = fctPair;
+                                function_which_has_reference_rerun = fctPair.getFirst();
+                                referenceAddress_result_rerun = result_rerun.getSecond();
+                                break;
+                            }
+                        }
+                        System.out.println("[*] Seems like we found the label master secret in function "+function_which_has_reference_rerun.getName());
+                        // if we didn't found that string it will also trigger an exception
+                        
+                        
+                    }else{
+                        functionAddressPairs_rerun.get(0); // should trigger an execption
+                    }
+                    
+
+                }else{
+                    String identifier_tls12_prf_export = "extended master secret";
+                    System.out.println();
+                    System.out.println("[*] String master secret wasn't found in binary! Trying another approach...");
+                    System.out.println("[*] Start identifying the PRF by looking for String \"" + identifier_tls12_prf_export+"\"");
 
 
-                List<Pair<Function, Address>> functionAddressPairs_rerun = findStringUsage(identifier_tls12_prf_export);
-                Pair<Function, Address> result_rerun = functionAddressPairs_rerun.get(0);
-                Function function_which_has_reference_rerun = result_rerun.getFirst();
-                Address referenceAddress_result_rerun = result_rerun.getSecond();
+                    functionAddressPairs_rerun = findStringUsage(identifier_tls12_prf_export);
+                    result_rerun = functionAddressPairs_rerun.get(0);
+                    function_which_has_reference_rerun = result_rerun.getFirst();
+                    referenceAddress_result_rerun = result_rerun.getSecond();
+
+                }
+
+                
                 do_analysis(function_which_has_reference_rerun,  referenceAddress_result_rerun,false, true, functionAddressPairs_rerun);
             }
         }catch(Exception e){
@@ -2604,7 +3230,7 @@ private Address findFunctionCallUsingResult(Address startAddress) {
             if(!is_hkdf && !is_rerun){
                 return 42;
             }
-            System.err.println("[-] No functions found that reference the specified string.");
+            System.err.println("[-42] No functions found that reference the specified string.");
             System.out.println();
             return -1;
         }
@@ -2803,7 +3429,17 @@ private void analyzeJarFile(Program program) {
 
 
 
-
+private void set_debug_option(){
+    // Retrieve the script arguments.
+    String[] args = getScriptArgs();
+    for (String arg : args) {
+        // For example, if you pass "DEBUG_RUN=true" as an argument:
+        if (arg.equalsIgnoreCase("DEBUG_RUN=true")) {
+            DEBUG_RUN = true;
+            break;
+        }
+    }
+}
 
     /*
      * Main entry point
@@ -2812,6 +3448,13 @@ private void analyzeJarFile(Program program) {
 
     @Override
     protected void run() throws Exception {
+        set_debug_option();
+        is_windows_binary = isPEfile();
+
+        TLSKeyHunter.is_go_binary = is_target_binary_a_go_binary();
+        TLSKeyHunter.is_rust_binary = is_target_binary_a_rust_binary();
+
+
         printTLSKeyHunterLogo();
 
         Program program = getCurrentProgram();
@@ -2821,19 +3464,20 @@ private void analyzeJarFile(Program program) {
         }
 
         // Check if the binary is a JAR file
-        if (!isJarOrClassFile(program)) {
+        //if (!isJarOrClassFile(program)) {
             System.out.println(getBinaryInfos());
 
         
             identifying_TLS13_HKDF();
             identifying_TLS12_PRF();
-        }else{
+        /* *}else{
             System.out.println("[*] Binary is a JAR file or Class file. Invoking JAR Analyzer");
             // Extract and search strings in the JAR
             listStringsContainingMasterSecret(program);
             do_find_master_secret_in_class_files();
+            */
             
-        }
+        //}
 
 
 

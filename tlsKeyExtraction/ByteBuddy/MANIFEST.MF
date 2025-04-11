@@ -1,0 +1,3 @@
+Agent-Class: org.example.agent.HookAgent
+Can-Redefine-Classes: true
+Can-Retransform-Classes: true

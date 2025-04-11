@@ -939,43 +939,16 @@ main();
 
 
 /*
-Some good intro Cronet and its QUIC support:
-https://docs.google.com/document/d/1g5nIXAIkN_Y-7XJW5K45IblHd_L2f5LTaDUDwvZ5L6g/edit#heading=h.in8d8fe8u7v
-
-In RusTLS
-https://github.com/google/boringssl/blob/5a94aff9aebcf9738c7bc464bc95fa4ac3a46ed7/ssl/tls13_enc.cc#L323
+PRF
+https://github.com/rustls/rustls/blob/5860d10317528e4f162db6e26c74f81575c51403/rustls/src/tls12/mod.rs#L118
 
 
-when I look into the code I can see that the derive_secret function is finally invoking the HKDF expand label funktion
-https://github.com/google/boringssl/blob/5a94aff9aebcf9738c7bc464bc95fa4ac3a46ed7/ssl/tls13_enc.cc#L172
+HKDF
+TLS-Label:
+https://github.com/rustls/rustls/blob/5860d10317528e4f162db6e26c74f81575c51403/rustls/src/tls13/key_schedule.rs#L257
 
-In GnuTLS
-https://github.com/gnutls/gnutls/blob/97f1baf6a7ad4aa1ff3db6e8543d910219ef9a16/lib/constate.c#L412
-
-
-derive_secret(hs, hs->client_traffic_secret_0(),
-                     label_to_span(kTLS13LabelClientApplicationTraffic))
-
-                     bzw.
-
-                     derive_secret(hs, hs->client_handshake_secret(),
-                     label_to_span(kTLS13LabelClientHandshakeTraffic))
+Actually HKDF:
+https://github.com/rustls/rustls/blob/5860d10317528e4f162db6e26c74f81575c51403/rustls/src/tls13/key_schedule.rs#L672
 
 
-
-***** PRF Research ****
-
-Right now this script is only able to hook the HKDF which helps us only for TLS 1.3
-
-For TLS 1.2 we need to hook the PRF 
-master_secret = PRF(pre_master_secret, "master secret", ClientHello.random + ServerHello.random) [0..47]
-
-
-static const char kMasterSecretLabel[] = "master secret";
-auto label = MakeConstSpan(kMasterSecretLabel, sizeof(kMasterSecretLabel) - 1);
-if (!tls1_prf(hs->transcript.Digest(), out, premaster, label,
-                  ssl->s3->client_random, ssl->s3->server_random)
-https://github.com/google/boringssl/blob/ee3f9468584b6607f944b885ad50db35a70daf8d/ssl/t1_enc.cc#L270
-
-(this might help https://github.com/google/boringssl/blob/ee3f9468584b6607f944b885ad50db35a70daf8d/ssl/handshake.cc#L530)
 */
