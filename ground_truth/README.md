@@ -1,6 +1,6 @@
 # TLS_Library_Ground_Truth
 
-Here we provide a ground truth implementation for the Linux operating system. So we created a TLS client for each of the library provided in the following list. The table is original taken from [here](https://dfrws.org/wp-content/uploads/2024/07/TLS-key-material-identification-and-extractio_2024_Forensic-Science-Internat.pdf).
+Here we provide a ground truth implementation for the Linux operating system. So we created a TLS client for each of the library provided in the following list. The table is original taken from [here](https://dfrws.org/wp-content/uploads/2024/07/TLS-key-material-identification-and-extractio_2024_Forensic-Science-Internat.pdf). 
 
 | Library Name | Implemented | Repository Path | Android Implemented |
 |--------------|-------------|-----------------|---------------------|
@@ -24,6 +24,10 @@ Here we provide a ground truth implementation for the Linux operating system. So
 
 \* := no export available \
 NA := not available
+
+## Acknowledgments
+
+A special thank you to [Julian Lengersdorff]([https://github.com/JulianMueller](https://github.com/Julian-Lengersdorff)) for his outstanding work on building most of the ground truth dataset. His contributions greatly enhanced our ability to test and validate TLSKeyHunter.
 
 ## Running a TLS Library Implementation
 
