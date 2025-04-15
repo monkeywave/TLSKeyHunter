@@ -31,7 +31,7 @@ This repository contains the artifacts and implementation details for the resear
   Contains a standalone Java tool that uses the ASM framework to analyze Java binaries and identify TLS key derivation functions. This tool is specifically designed for extracting Key-Derivation Fingerprints from Java-based TLS implementations.
 
 - **`network_decryption`**  
-  ncludes the script `randomInverse.py`, which facilitates network traffic decryption using extracted TLS keys when the client_random value is unavailable. The script identifies the correct client_random associated with each TLS secret and generates an SSLKEYLOG file, directly compatible with Wireshark and other network analysis tools.
+  Includes the script `randomInverse.py`, which facilitates network traffic decryption using extracted TLS keys when the client_random value is unavailable. The script identifies the correct client random associated with each TLS secret and generates an SSLKEYLOG file, directly compatible with Wireshark and other network analysis tools.
 
 ---
 
