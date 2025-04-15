@@ -27,7 +27,8 @@ NA := not available
 
 ## Acknowledgments
 
-A special thank you to [Julian Lengersdorff]([https://github.com/JulianMueller](https://github.com/Julian-Lengersdorff)) for his outstanding work on building most of the ground truth dataset. His contributions greatly enhanced our ability to test and validate TLSKeyHunter.
+A special thank you to an external collaborator for his outstanding work on building most of the ground truth dataset. 
+Contributor details are omitted for anonymous submission. His contributions greatly enhanced our ability to test and validate TLSKeyHunter.
 
 ## Running a TLS Library Implementation
 
