@@ -23,7 +23,7 @@ RUN /opt/ghidra_11.1.2_PUBLIC/support/buildNatives
 
 # Copy the Ghidra analysis script into the container
 WORKDIR /usr/local/src
-COPY TLSKeyHunter.java.java /usr/local/src/TLSKeyHunter.java.java
+COPY TLSKeyHunter.java /usr/local/src/TLSKeyHunter.java
 COPY MinimalAnalysisOption.java /usr/local/src/MinimalAnalysisOption.java
 COPY custom_log4j.xml /usr/local/src/custom_log4j.xml
 COPY ghidra_analysis.sh /usr/local/src/ghidra_analysis.sh
